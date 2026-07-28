@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>the junk drawer</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #c0c0c0;
+    color: #000;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 14px;
+    margin: 12px;
+  }
+  h1 { text-align: center; font-size: 28px; margin: 4px 0 0; font-weight: bold; }
+  .subtitle { text-align: center; font-size: 12px; color: #333; margin: 2px 0 6px; }
+  marquee { display: block; font-size: 12px; color: #000080; margin: 2px 0; }
+  .navline { text-align: center; font-size: 13px; margin: 6px 0; }
+  .linky { color: #0000EE; text-decoration: underline; cursor: pointer; }
+  .linky:active { color: #EE0000; }
+  a { color: #0000EE; }
+  #status { color: #cc0000; font-size: 12px; margin-left: 8px; }
+  #status.clicky { text-decoration: underline; cursor: pointer; }
+  hr { border: none; border-top: 1px solid #808080; border-bottom: 1px solid #fff; }
+
+  button {
+    background: #c0c0c0; border: 2px outset #fff;
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+    padding: 2px 10px; cursor: pointer; color: #000;
+  }
+  button:active { border-style: inset; }
+  input[type=text] {
+    background: #fff; color: #000; border: 2px inset #fff;
+    font-family: "Courier New", monospace; font-size: 13px; padding: 4px 6px;
+  }
+  input[type=file] { display: none; }
+  fieldset { border: 1px solid #808080; margin: 0 auto 12px; padding: 8px; max-width: 560px; }
+  legend { font-size: 12px; padding: 0 4px; }
+  .tossrow { display: flex; gap: 6px; }
+  .tossrow input { flex: 1; }
+  .hint { font-size: 11px; color: #333; margin-top: 5px; line-height: 1.4; }
+
+  /* ---------- The pile ---------- */
+  #pile {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 14px 4px;
+  }
+  .scrap {
+    background: #fff;
+    border: 1px solid #000;
+    padding: 6px 9px;
+    max-width: 240px;
+    font-size: 13px;
+    line-height: 1.35;
+    position: relative;
+    word-wrap: break-word;
+  }
+  .scrap img { max-width: 200px; display: block; }
+  .scrap .del {
+    position: absolute; top: -8px; right: -8px;
+    width: 16px; height: 16px;
+    padding: 0; font-size: 10px; line-height: 12px;
+  }
+  .pagefoot { text-align: center; font-size: 12px; color: #333; margin: 8px 0; }
+  .counter {
+    background: #000; color: #00ff00;
+    font-family: "Courier New", monospace; font-size: 12px;
+    padding: 1px 5px; letter-spacing: 3px; border: 1px solid #555;
+  }
+</style>
+</head>
+<body>
+
+<h1>~ the junk drawer ~</h1>
+<div class="subtitle">tiny things in no particular order &middot; shake gently</div>
+<marquee scrollamount="3">*~ do not organize ~*</marquee>
+<hr>
+<div class="navline">
+  [ <a href="./">back to the diary</a> |
+  <span class="linky" id="shuffleBtn">shake the drawer</span> |
+  <span class="linky" id="ownerBtn">owner</span> ]
+  <span id="status"></span>
+</div>
+<hr>
+
+<fieldset id="ownerBox" style="display:none;">
+  <legend>toss something in</legend>
+  <div class="tossrow">
+    <input type="text" id="junkInput" placeholder="a tiny thing... (a whole URL becomes a link)">
+    <button id="tossBtn">toss it in</button>
+  </div>
+  <button id="addImgBtn" style="margin-top:6px;">toss in a small image</button>
+  <input type="file" id="imgFile" accept="image/*">
+  <div class="hint">one tiny thing at a time. it publishes the moment you toss it.</div>
+</fieldset>
+
+<div id="pile"></div>
+
+<hr>
+<div class="pagefoot">
+  <span class="counter" id="count">00000</span> tiny things and counting
+</div>
+
+<script>
+/* ============================================================
+   THE JUNK DRAWER — a public pile of tiny things.
+   Same arrangement as the diary: everyone can look, only the
+   owner (GitHub token in this browser) can toss things in.
+   Uses the SAME token as the diary (shared localStorage key),
+   so being logged in on one page logs you in on both.
+   Data lives in junk-data.json in the same repository.
+   ============================================================ */
+
+const DATA_PATH = 'junk-data.json';
+const LS = {
+  token:  'diaryGrid.token',        // shared with the diary on purpose
+  pending:'junkDrawer.unpublished',
+  legacy: 'junkDrawer.v1'           // local-mode storage
+};
+
+function detectRepo(){
+  const h=location.hostname;
+  if(!h.endsWith('.github.io')) return null;
+  const owner=h.split('.')[0];
+  const seg=location.pathname.split('/').filter(Boolean);
+  const last=seg[seg.length-1]||'';
+  const dirs=last.includes('.') ? seg.slice(0,-1) : seg;
+  const repo=dirs.length ? dirs[0] : h;
+  return {owner:owner, repo:repo};
+}
+const REPO=detectRepo();
+const MODE=REPO ? 'remote' : 'local';
+
+let data={items:[]};
+let sha=null;
+let token=localStorage.getItem(LS.token)||'';
+let dirty=false;
+let publishing=false, publishAgain=false;
+
+function canEdit(){ return MODE==='local' || !!token; }
+function keyOf(d){ return d.toISOString().slice(0,10); }
+
+/* ---------- Status ---------- */
+let statusTimer;
+function setStatus(msg, clickToRetry){
+  const s=document.getElementById('status');
+  clearTimeout(statusTimer);
+  s.textContent=msg;
+  s.classList.toggle('clicky', !!clickToRetry);
+  s.onclick=clickToRetry ? publish : null;
+}
+function flashStatus(msg){
+  setStatus(msg,false);
+  statusTimer=setTimeout(()=>setStatus('',false),1500);
+}
+
+/* ---------- Base64 (unicode-safe, chunked) ---------- */
+function b64encode(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH){
+    bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH));
+  }
+  return btoa(bin);
+}
+function b64decode(b64){
+  const bin=atob(b64.replace(/\s/g,''));
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+/* ---------- GitHub API ---------- */
+function contentsUrl(){
+  return 'https://api.github.com/repos/'+REPO.owner+'/'+REPO.repo+'/contents/'+DATA_PATH;
+}
+function ghHeaders(extra){
+  return Object.assign({
+    'Authorization':'Bearer '+token,
+    'Accept':'application/vnd.github+json',
+    'X-GitHub-Api-Version':'2022-11-28'
+  }, extra||{});
+}
+async function refreshSha(){
+  const r=await fetch(contentsUrl(),{headers:ghHeaders()});
+  if(r.status===404){ sha=null; return null; }
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  sha=j.sha;
+  return j;
+}
+async function publish(){
+  if(MODE!=='remote'||!token) return;
+  if(publishing){ publishAgain=true; return; }
+  publishing=true;
+  setStatus('publishing...');
+  try{
+    try{ await refreshSha(); }catch(e){}
+    const body={message:'junk drawer update '+keyOf(new Date()),
+                content:b64encode(JSON.stringify(data))};
+    if(sha) body.sha=sha;
+    let r=await fetch(contentsUrl(),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+    if(r.status===409){
+      await refreshSha();
+      if(sha) body.sha=sha; else delete body.sha;
+      r=await fetch(contentsUrl(),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+    }
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    sha=j.content&&j.content.sha ? j.content.sha : sha;
+    dirty=false;
+    try{ localStorage.removeItem(LS.pending); }catch(e){}
+    flashStatus('published \u2713');
+  }catch(e){
+    setStatus('!! not published \u2014 click here to retry', true);
+  }finally{
+    publishing=false;
+    if(publishAgain){ publishAgain=false; publish(); }
+  }
+}
+
+/* ---------- Loading ---------- */
+function normalize(d){
+  if(d && Array.isArray(d.items)) return d;
+  return {items:[]};
+}
+async function loadPublic(){
+  try{
+    const r=await fetch(DATA_PATH+'?t='+Date.now());
+    data = r.ok ? normalize(await r.json()) : {items:[]};
+  }catch(e){ data={items:[]}; }
+}
+async function loadRemote(){
+  if(token){
+    try{
+      const j=await refreshSha();
+      if(j===null){ data={items:[]}; return; }
+      if(j.content){ data=normalize(JSON.parse(b64decode(j.content))); }
+      else{
+        const raw=await fetch(contentsUrl(),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
+        if(!raw.ok) throw new Error('HTTP '+raw.status);
+        data=normalize(await raw.json());
+      }
+    }catch(e){
+      setStatus('!! token could not load data \u2014 reading public copy');
+      await loadPublic();
+    }
+  } else await loadPublic();
+}
+function loadLocal(){
+  try{ data=normalize(JSON.parse(localStorage.getItem(LS.legacy))); }
+  catch(e){ data={items:[]}; }
+}
+function persist(){
+  if(MODE==='local'){
+    try{ localStorage.setItem(LS.legacy, JSON.stringify(data)); flashStatus('saved.'); }
+    catch(e){ setStatus('!! save failed (storage full?)'); }
+  } else {
+    dirty=true;
+    try{ localStorage.setItem(LS.pending, JSON.stringify(data)); }catch(e){}
+    publish();
+  }
+}
+window.addEventListener('beforeunload',e=>{
+  if(dirty){ e.preventDefault(); e.returnValue=''; }
+});
+
+/* ---------- Rendering the pile ---------- */
+function tiltFor(id){
+  let n=0;
+  for(let i=0;i<id.length;i++) n=(n*31+id.charCodeAt(i))%7;
+  return n-3; /* -3..3 degrees, stable per scrap */
+}
+function render(){
+  const pile=document.getElementById('pile');
+  pile.innerHTML='';
+  const items=data.items.slice();
+  for(let i=items.length-1;i>0;i--){          /* shuffle */
+    const j=Math.floor(Math.random()*(i+1));
+    const t=items[i]; items[i]=items[j]; items[j]=t;
+  }
+  items.forEach(it=>{
+    const s=document.createElement('div');
+    s.className='scrap';
+    s.style.transform='rotate('+tiltFor(it.id)+'deg)';
+    if(it.type==='image'){
+      const img=document.createElement('img'); img.src=it.content;
+      s.appendChild(img);
+    } else if(it.type==='link'){
+      const a=document.createElement('a');
+      a.href=it.content; a.target='_blank'; a.rel='noopener';
+      a.textContent = it.content.length>60 ? it.content.slice(0,60)+'...' : it.content;
+      s.appendChild(a);
+    } else {
+      s.appendChild(document.createTextNode(it.content));
+    }
+    if(canEdit()){
+      const del=document.createElement('button');
+      del.className='del'; del.textContent='\u2715'; del.title='toss it out';
+      del.onclick=()=>{
+        if(confirm('toss this one out for good?')){
+          data.items=data.items.filter(x=>x.id!==it.id);
+          persist(); render();
+        }
+      };
+      s.appendChild(del);
+    }
+    pile.appendChild(s);
+  });
+  document.getElementById('count').textContent=String(data.items.length).padStart(5,'0');
+  if(!items.length){
+    const empty=document.createElement('div');
+    empty.className='scrap';
+    empty.textContent='(the drawer is empty. for now.)';
+    pile.appendChild(empty);
+  }
+}
+
+/* ---------- Adding things ---------- */
+function newId(){ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
+function tossText(){
+  const inp=document.getElementById('junkInput');
+  const v=inp.value.trim();
+  if(!v) return;
+  const isUrl=/^https?:\/\/\S+$/i.test(v);
+  data.items.push({id:newId(), type:isUrl?'link':'text', content:v, added:keyOf(new Date())});
+  inp.value='';
+  persist(); render();
+}
+function fileToDataURL(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result); r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+}
+function shrinkImage(file){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=600;
+      let w=img.width,h=img.height;
+      if(w>max||h>max){ const s=max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',0.85));
+    };
+    img.onerror=()=>res(null);
+    img.src=URL.createObjectURL(file);
+  });
+}
+
+/* ---------- Owner ---------- */
+function ownerClick(){
+  if(token){
+    if(dirty && !confirm('you have unpublished changes. log out anyway?')) return;
+    localStorage.removeItem(LS.token);
+    location.reload();
+  } else {
+    const t=prompt('paste your GitHub token (same one as the diary).\nit stays only in this browser.');
+    if(t && t.trim()){
+      localStorage.setItem(LS.token, t.trim());
+      location.reload();
+    }
+  }
+}
+function initUI(){
+  document.getElementById('ownerBtn').textContent = token ? 'log out' : 'owner';
+  document.getElementById('ownerBtn').style.display = (MODE==='remote') ? '' : 'none';
+  document.getElementById('ownerBox').style.display = canEdit() ? '' : 'none';
+}
+
+/* ---------- Wiring ---------- */
+document.getElementById('tossBtn').onclick=tossText;
+document.getElementById('junkInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter') tossText();
+});
+document.getElementById('addImgBtn').onclick=()=>document.getElementById('imgFile').click();
+document.getElementById('imgFile').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  let url=null;
+  if(f.type==='image/gif'){ url=await fileToDataURL(f); }
+  else { url=await shrinkImage(f); if(!url) url=await fileToDataURL(f); }
+  data.items.push({id:newId(), type:'image', content:url, added:keyOf(new Date())});
+  persist(); render();
+  e.target.value='';
+};
+document.getElementById('shuffleBtn').onclick=render;
+document.getElementById('ownerBtn').onclick=ownerClick;
+
+/* ---------- Startup ---------- */
+async function main(){
+  initUI();
+  setStatus('loading...');
+  if(MODE==='remote') await loadRemote();
+  else loadLocal();
+  setStatus('');
+
+  if(MODE==='remote' && token){
+    let pending=null;
+    try{ pending=JSON.parse(localStorage.getItem(LS.pending)); }catch(e){}
+    if(pending && pending.items && pending.items.length &&
+       confirm('found unpublished junk from a previous visit \u2014 publish it now?')){
+      const have=new Set(data.items.map(x=>x.id));
+      pending.items.forEach(x=>{ if(!have.has(x.id)) data.items.push(x); });
+      dirty=true;
+      await publish();
+    } else {
+      try{ localStorage.removeItem(LS.pending); }catch(e){}
+    }
+  }
+  render();
+}
+main();
+</script>
+</body>
+</html>
