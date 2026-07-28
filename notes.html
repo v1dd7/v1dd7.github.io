@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>notes</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #c0c0c0; color: #000;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 14px; margin: 12px;
+  }
+  h1 { text-align: center; font-size: 28px; margin: 4px 0 0; font-weight: bold; }
+  .subtitle { text-align: center; font-size: 12px; color: #333; margin: 2px 0 6px; }
+  marquee { display: block; font-size: 12px; color: #000080; margin: 2px 0; }
+  .navline { text-align: center; font-size: 13px; margin: 6px 0; }
+  .linky { color: #0000EE; text-decoration: underline; cursor: pointer; }
+  .linky:active { color: #EE0000; }
+  a { color: #0000EE; }
+  #status { color: #cc0000; font-size: 12px; margin-left: 8px; }
+  #status.clicky { text-decoration: underline; cursor: pointer; }
+  hr { border: none; border-top: 1px solid #808080; border-bottom: 1px solid #fff; }
+  button {
+    background: #c0c0c0; border: 2px outset #fff;
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+    padding: 2px 10px; cursor: pointer; color: #000;
+  }
+  button:active { border-style: inset; }
+  input[type=file] { display: none; }
+  .hint { font-size: 11px; color: #333; margin-top: 5px; line-height: 1.4; }
+
+  /* directory */
+  #ownerTools { text-align: center; margin: 10px 0; }
+  #noteList { max-width: 640px; margin: 0 auto; }
+  .entry { margin: 12px 0; }
+  .entry a.title { font-size: 17px; }
+  .entry small { color: #333; }
+
+  /* reading */
+  #viewRead, #viewEdit { max-width: 680px; margin: 0 auto; }
+  #readTitle { font-size: 22px; margin: 10px 0 2px; }
+  .noteMeta { font-size: 12px; color: #333; margin-bottom: 6px; }
+  #readBody { font-size: 15px; line-height: 1.55; }
+  #readBody h3 { font-size: 19px; margin: 16px 0 6px; }
+  #readBody h4 { font-size: 16px; margin: 14px 0 5px; }
+  #readBody h5 { font-size: 14px; margin: 12px 0 4px; }
+  #readBody blockquote {
+    margin: 8px 0 8px 6px; padding: 2px 10px;
+    border-left: 3px solid #808080; color: #333;
+  }
+  #readBody pre {
+    background: #fff; border: 2px inset #fff; padding: 8px;
+    font-family: "Courier New", monospace; font-size: 12px;
+    overflow-x: auto; white-space: pre-wrap;
+  }
+  #readBody code {
+    font-family: "Courier New", monospace; font-size: 13px;
+    background: #fff; border: 1px solid #999; padding: 0 3px;
+  }
+  #readBody ul, #readBody ol { margin: 6px 0 6px 24px; }
+  #readBody p { margin: 8px 0; }
+
+  /* editor */
+  #edTitle {
+    width: 100%; background: #fff; color: #000; border: 2px inset #fff;
+    font-family: "Times New Roman", serif; font-size: 18px; font-weight: bold;
+    padding: 5px 8px; margin-bottom: 8px;
+  }
+  #edBody {
+    width: 100%; min-height: 62vh; background: #fff; color: #000;
+    border: 2px inset #fff; font-family: "Courier New", monospace;
+    font-size: 13px; line-height: 1.5; padding: 8px; resize: vertical;
+  }
+  #edPreview {
+    background: #fff; border: 2px inset #fff; padding: 10px;
+    min-height: 62vh; font-size: 15px; line-height: 1.55; display: none;
+  }
+  .toolrow { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  .toolrow .spacer { flex: 1; }
+  .tabbtn.on { border-style: inset; font-weight: bold; }
+
+  .pagefoot { text-align: center; font-size: 12px; color: #333; margin: 8px 0; }
+  .counter {
+    background: #000; color: #00ff00;
+    font-family: "Courier New", monospace; font-size: 12px;
+    padding: 1px 5px; letter-spacing: 3px; border: 1px solid #555;
+  }
+</style>
+</head>
+<body>
+
+<h1>~ notes ~</h1>
+<div class="subtitle">long thoughts, hoarded</div>
+<marquee scrollamount="3">*~ i am writing things down ~*</marquee>
+<hr>
+<div class="navline">
+  [ <a href="./">the diary</a> |
+  <a href="junk.html">the junk drawer</a> |
+  <span class="linky" id="ownerBtn">owner</span> ]
+  <span id="status"></span>
+</div>
+<hr>
+
+<!-- ============ DIRECTORY ============ -->
+<div id="viewList">
+  <div id="ownerTools" style="display:none;">
+    <button id="newNoteBtn">+ start a new note</button>
+    <button id="importBtn">import .md files</button>
+    <input type="file" id="importFile" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple>
+  </div>
+  <div id="noteList"></div>
+</div>
+
+<!-- ============ READING ============ -->
+<div id="viewRead" style="display:none;">
+  <div class="navline">
+    [ <span class="linky" id="backList">back to all notes</span><span id="readOwnerLinks" style="display:none;"> |
+    <span class="linky" id="editLink">edit</span> |
+    <span class="linky" id="deleteLink">delete</span></span> ]
+  </div>
+  <h2 id="readTitle"></h2>
+  <div class="noteMeta" id="readMeta"></div>
+  <hr>
+  <div id="readBody"></div>
+</div>
+
+<!-- ============ EDITOR (owner) ============ -->
+<div id="viewEdit" style="display:none;">
+  <input type="text" id="edTitle" placeholder="title...">
+  <div class="toolrow">
+    <button class="tabbtn on" id="tabWrite">write</button>
+    <button class="tabbtn" id="tabPreview">preview</button>
+    <div class="spacer"></div>
+    <span class="hint"><span id="edWords">0</span> words &middot; draft autosaves in this browser</span>
+  </div>
+  <textarea id="edBody" placeholder="write... (markdown works: # headings, **bold**, *italic*, - lists, > quotes, [links](https://...))"></textarea>
+  <div id="edPreview"></div>
+  <div class="toolrow">
+    <button id="cancelBtn">cancel</button>
+    <div class="spacer"></div>
+    <button id="saveNoteBtn"><b>save &amp; publish</b></button>
+  </div>
+</div>
+
+<hr>
+<div class="pagefoot">
+  <span class="counter" id="noteCount">000</span> notes &middot;
+  <span class="counter" id="wordCount">0000000</span> words hoarded
+</div>
+
+<script>
+/* ============================================================
+   NOTES — a public library of long thoughts.
+   Everyone can read; only the owner (GitHub token, shared with
+   the diary) can write. Each note is its own file:
+     notes/<id>.json          (the note)
+     notes-index.json         ({notes:[{id,title,created,updated,words}]})
+   so saving one note never re-uploads the others.
+   Drafts autosave to this browser while writing; publishing
+   happens only on "save & publish".
+   ============================================================ */
+
+const INDEX_PATH='notes-index.json';
+const LS={
+  token:'diaryGrid.token',      /* shared with diary & junk drawer */
+  draft:'notesRoom.draft',
+  legacy:'notesRoom.v1'         /* local-mode storage */
+};
+
+function detectRepo(){
+  const h=location.hostname;
+  if(!h.endsWith('.github.io')) return null;
+  const owner=h.split('.')[0];
+  const seg=location.pathname.split('/').filter(Boolean);
+  const last=seg[seg.length-1]||'';
+  const dirs=last.includes('.') ? seg.slice(0,-1) : seg;
+  const repo=dirs.length ? dirs[0] : h;
+  return {owner:owner, repo:repo};
+}
+const REPO=detectRepo();
+const MODE=REPO ? 'remote' : 'local';
+
+let token=localStorage.getItem(LS.token)||'';
+let index=[];            /* [{id,title,created,updated,words}] */
+let noteCache={};        /* id -> full note */
+let editingId=null;      /* null = new note */
+let dirtyEdit=false;
+let draftTimer=null;
+
+function canEdit(){ return MODE==='local' || !!token; }
+function keyOf(d){ return d.toISOString().slice(0,10); }
+function fmtKey(k){ const p=k.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); }
+function wordsOf(s){ s=(s||'').trim(); return s ? s.split(/\s+/).length : 0; }
+function newId(){ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
+function notePath(id){ return 'notes/'+id+'.json'; }
+
+/* ---------- Status ---------- */
+let statusTimer;
+function setStatus(msg, retryFn){
+  const s=document.getElementById('status');
+  clearTimeout(statusTimer);
+  s.textContent=msg;
+  s.classList.toggle('clicky', !!retryFn);
+  s.onclick=retryFn||null;
+}
+function flashStatus(msg){
+  setStatus(msg,null);
+  statusTimer=setTimeout(()=>setStatus('',null),1800);
+}
+
+/* ---------- Base64 ---------- */
+function b64encode(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH){
+    bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH));
+  }
+  return btoa(bin);
+}
+
+/* ---------- GitHub API (generic, per-path) ---------- */
+function apiUrl(path){
+  return 'https://api.github.com/repos/'+REPO.owner+'/'+REPO.repo+'/contents/'+path;
+}
+function ghHeaders(extra){
+  return Object.assign({
+    'Authorization':'Bearer '+token,
+    'Accept':'application/vnd.github+json',
+    'X-GitHub-Api-Version':'2022-11-28'
+  }, extra||{});
+}
+async function getMeta(path){
+  const r=await fetch(apiUrl(path),{headers:ghHeaders()});
+  if(r.status===404) return null;
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+async function apiReadText(path){
+  const r=await fetch(apiUrl(path),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
+  if(r.status===404) return null;
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.text();
+}
+async function putFile(path, str, msg){
+  const meta=await getMeta(path).catch(()=>null);
+  const body={message:msg, content:b64encode(str)};
+  if(meta && meta.sha) body.sha=meta.sha;
+  let r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+  if(r.status===409){
+    const m2=await getMeta(path).catch(()=>null);
+    if(m2 && m2.sha) body.sha=m2.sha; else delete body.sha;
+    r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+  }
+  if(!r.ok) throw new Error('HTTP '+r.status);
+}
+async function delFile(path, msg){
+  const meta=await getMeta(path);
+  if(!meta) return;
+  const r=await fetch(apiUrl(path),{
+    method:'DELETE', headers:ghHeaders(),
+    body:JSON.stringify({message:msg, sha:meta.sha})
+  });
+  if(!r.ok) throw new Error('HTTP '+r.status);
+}
+
+/* ---------- Reads (public vs owner-fresh) ---------- */
+async function readJson(path){
+  if(MODE==='remote' && token){
+    const t=await apiReadText(path);
+    return t===null ? null : JSON.parse(t);
+  }
+  const r=await fetch(path+'?t='+Date.now());
+  if(!r.ok) return null;
+  return r.json();
+}
+
+/* ---------- Local-mode storage ---------- */
+function localAll(){
+  try{ const d=JSON.parse(localStorage.getItem(LS.legacy)); return (d&&Array.isArray(d.notes))?d.notes:[]; }
+  catch(e){ return []; }
+}
+function localSaveAll(notes){
+  localStorage.setItem(LS.legacy, JSON.stringify({notes:notes}));
+}
+
+/* ---------- Loading ---------- */
+async function loadIndex(){
+  if(MODE==='local'){
+    const notes=localAll();
+    noteCache={}; notes.forEach(n=>noteCache[n.id]=n);
+    index=notes.map(n=>({id:n.id,title:n.title,created:n.created,updated:n.updated,words:wordsOf(n.body)}));
+    return;
+  }
+  try{
+    const d=await readJson(INDEX_PATH);
+    index=(d && Array.isArray(d.notes)) ? d.notes : [];
+  }catch(e){ index=[]; setStatus('!! could not load the note list'); }
+}
+async function loadNote(id){
+  if(noteCache[id]) return noteCache[id];
+  if(MODE==='local') return null;
+  try{
+    const n=await readJson(notePath(id));
+    if(n) noteCache[id]=n;
+    return n;
+  }catch(e){ return null; }
+}
+
+/* ---------- Mini Markdown renderer (safe: builds DOM, no innerHTML from content) ---------- */
+function inlineParse(s){
+  const frag=document.createDocumentFragment();
+  const re=/(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))|(https?:\/\/[^\s<>()]+)/g;
+  let last=0, m;
+  while((m=re.exec(s))!==null){
+    if(m.index>last) frag.appendChild(document.createTextNode(s.slice(last,m.index)));
+    const t=m[0];
+    if(m[1]){ const c=document.createElement('code'); c.textContent=t.slice(1,-1); frag.appendChild(c); }
+    else if(m[2]){ const b=document.createElement('b'); b.textContent=t.slice(2,-2); frag.appendChild(b); }
+    else if(m[3]){ const i=document.createElement('i'); i.textContent=t.slice(1,-1); frag.appendChild(i); }
+    else if(m[4]){
+      const mm=t.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      const a=document.createElement('a');
+      a.href=mm[2]; a.target='_blank'; a.rel='noopener'; a.textContent=mm[1];
+      frag.appendChild(a);
+    }
+    else if(m[5]){
+      const a=document.createElement('a');
+      a.href=t; a.target='_blank'; a.rel='noopener'; a.textContent=t;
+      frag.appendChild(a);
+    }
+    last=m.index+t.length;
+  }
+  if(last<s.length) frag.appendChild(document.createTextNode(s.slice(last)));
+  return frag;
+}
+function mdRender(text){
+  const out=document.createDocumentFragment();
+  const lines=(text||'').split('\n');
+  let para=[], list=null, quote=[], code=null;
+
+  function flushPara(){
+    if(!para.length) return;
+    const p=document.createElement('p');
+    para.forEach((ln,i)=>{
+      if(i>0) p.appendChild(document.createElement('br'));
+      p.appendChild(inlineParse(ln));
+    });
+    out.appendChild(p); para=[];
+  }
+  function flushList(){
+    if(list){ out.appendChild(list.el); list=null; }
+  }
+  function flushQuote(){
+    if(!quote.length) return;
+    const q=document.createElement('blockquote');
+    quote.forEach((ln,i)=>{
+      if(i>0) q.appendChild(document.createElement('br'));
+      q.appendChild(inlineParse(ln));
+    });
+    out.appendChild(q); quote=[];
+  }
+  function flushAll(){ flushPara(); flushList(); flushQuote(); }
+
+  for(const raw of lines){
+    if(code!==null){
+      if(/^```/.test(raw)){ const pre=document.createElement('pre'); pre.textContent=code.join('\n'); out.appendChild(pre); code=null; }
+      else code.push(raw);
+      continue;
+    }
+    if(/^```/.test(raw)){ flushAll(); code=[]; continue; }
+    const line=raw.replace(/\s+$/,'');
+    let m;
+    if(!line.trim()){ flushAll(); continue; }
+    if(m=line.match(/^(#{1,3})\s+(.*)$/)){
+      flushAll();
+      const h=document.createElement('h'+(m[1].length+2));
+      h.appendChild(inlineParse(m[2]));
+      out.appendChild(h); continue;
+    }
+    if(/^(-{3,}|\*{3,})$/.test(line.trim())){ flushAll(); out.appendChild(document.createElement('hr')); continue; }
+    if(m=line.match(/^>\s?(.*)$/)){ flushPara(); flushList(); quote.push(m[1]); continue; }
+    if(m=line.match(/^[-*]\s+(.*)$/)){
+      flushPara(); flushQuote();
+      if(!list||list.type!=='ul'){ flushList(); list={type:'ul', el:document.createElement('ul')}; }
+      const li=document.createElement('li'); li.appendChild(inlineParse(m[1]));
+      list.el.appendChild(li); continue;
+    }
+    if(m=line.match(/^\d+[.)]\s+(.*)$/)){
+      flushPara(); flushQuote();
+      if(!list||list.type!=='ol'){ flushList(); list={type:'ol', el:document.createElement('ol')}; }
+      const li=document.createElement('li'); li.appendChild(inlineParse(m[1]));
+      list.el.appendChild(li); continue;
+    }
+    flushList(); flushQuote();
+    para.push(line);
+  }
+  if(code!==null){ const pre=document.createElement('pre'); pre.textContent=code.join('\n'); out.appendChild(pre); }
+  flushAll();
+  return out;
+}
+
+/* ---------- Views ---------- */
+function show(view){
+  ['viewList','viewRead','viewEdit'].forEach(v=>{
+    document.getElementById(v).style.display = (v===view)?'':'none';
+  });
+}
+function renderList(){
+  const box=document.getElementById('noteList');
+  box.innerHTML='';
+  const sorted=index.slice().sort((a,b)=> (b.updated||'').localeCompare(a.updated||''));
+  if(!sorted.length){
+    const p=document.createElement('p');
+    p.style.textAlign='center';
+    p.textContent='(no notes yet.)';
+    box.appendChild(p);
+  }
+  sorted.forEach(n=>{
+    const e=document.createElement('div'); e.className='entry';
+    const a=document.createElement('a');
+    a.className='title'; a.href='#'+n.id; a.textContent=n.title||'untitled';
+    e.appendChild(a);
+    const s=document.createElement('small');
+    s.textContent=' \u2014 '+(n.words||0)+' words \u00b7 updated '+fmtKey(n.updated||n.created);
+    e.appendChild(s);
+    box.appendChild(e);
+  });
+  document.getElementById('noteCount').textContent=String(index.length).padStart(3,'0');
+  const total=index.reduce((t,n)=>t+(n.words||0),0);
+  document.getElementById('wordCount').textContent=String(total).padStart(7,'0');
+  show('viewList');
+}
+async function renderRead(id){
+  const meta=index.find(n=>n.id===id);
+  const note=await loadNote(id);
+  if(!note){
+    document.getElementById('readTitle').textContent='(note not found)';
+    document.getElementById('readMeta').textContent='';
+    document.getElementById('readBody').innerHTML='';
+    show('viewRead'); return;
+  }
+  document.getElementById('readTitle').textContent=note.title||'untitled';
+  document.getElementById('readMeta').textContent=
+    wordsOf(note.body)+' words \u00b7 started '+fmtKey(note.created)+
+    (note.updated&&note.updated!==note.created ? ' \u00b7 updated '+fmtKey(note.updated) : '');
+  const body=document.getElementById('readBody');
+  body.innerHTML='';
+  body.appendChild(mdRender(note.body));
+  document.getElementById('readOwnerLinks').style.display=canEdit()?'':'none';
+  show('viewRead');
+}
+async function renderEdit(id){
+  editingId=id;
+  let title='', body='';
+  if(id){
+    const n=await loadNote(id);
+    if(n){ title=n.title; body=n.body; }
+  }
+  document.getElementById('edTitle').value=title;
+  document.getElementById('edBody').value=body;
+  updateEdWords();
+  setTab('write');
+  dirtyEdit=false;
+  show('viewEdit');
+}
+
+/* ---------- Router ---------- */
+function route(){
+  const h=decodeURIComponent(location.hash.slice(1));
+  if(h==='new' || h.indexOf('edit/')===0){
+    if(!canEdit()){ location.hash=''; return; }
+    renderEdit(h==='new' ? null : h.slice(5));
+  }
+  else if(h){ renderRead(h); }
+  else renderList();
+}
+window.addEventListener('hashchange',route);
+
+/* ---------- Drafts ---------- */
+function saveDraft(){
+  const d={id:editingId, title:document.getElementById('edTitle').value,
+           body:document.getElementById('edBody').value, ts:Date.now()};
+  try{ localStorage.setItem(LS.draft, JSON.stringify(d)); }catch(e){}
+}
+function clearDraft(){ try{ localStorage.removeItem(LS.draft); }catch(e){} }
+function onEdit(){
+  dirtyEdit=true;
+  updateEdWords();
+  clearTimeout(draftTimer);
+  draftTimer=setTimeout(saveDraft,800);
+}
+function updateEdWords(){
+  document.getElementById('edWords').textContent=wordsOf(document.getElementById('edBody').value);
+}
+window.addEventListener('beforeunload',e=>{
+  if(dirtyEdit){ e.preventDefault(); e.returnValue=''; }
+});
+
+/* ---------- Saving / deleting ---------- */
+async function doSave(){
+  const title=document.getElementById('edTitle').value.trim()||'untitled';
+  const body=document.getElementById('edBody').value;
+  const now=keyOf(new Date());
+  let note;
+  if(editingId){
+    const prev=await loadNote(editingId) || {id:editingId, created:now};
+    note={id:editingId, title:title, body:body, created:prev.created||now, updated:now};
+  } else {
+    note={id:newId(), title:title, body:body, created:now, updated:now};
+  }
+  const entry={id:note.id, title:title, created:note.created, updated:now, words:wordsOf(body)};
+
+  if(MODE==='local'){
+    noteCache[note.id]=note;
+    index=index.filter(n=>n.id!==note.id); index.push(entry);
+    localSaveAll(Object.values(noteCache));
+    clearDraft(); dirtyEdit=false;
+    flashStatus('saved.');
+    location.hash=note.id;
+    return;
+  }
+  setStatus('publishing...');
+  try{
+    await putFile(notePath(note.id), JSON.stringify(note), 'note: '+title);
+    const newIndex=index.filter(n=>n.id!==note.id).concat([entry]);
+    await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
+    index=newIndex; noteCache[note.id]=note;
+    clearDraft(); dirtyEdit=false;
+    flashStatus('published \u2713');
+    location.hash=note.id;
+  }catch(e){
+    setStatus('!! not published \u2014 click here to retry', doSave);
+  }
+}
+async function doDelete(){
+  const id=decodeURIComponent(location.hash.slice(1));
+  const meta=index.find(n=>n.id===id);
+  if(!meta) return;
+  if(!confirm('delete "'+(meta.title||'untitled')+'" for good?')) return;
+
+  if(MODE==='local'){
+    delete noteCache[id];
+    index=index.filter(n=>n.id!==id);
+    localSaveAll(Object.values(noteCache));
+    location.hash=''; return;
+  }
+  setStatus('deleting...');
+  try{
+    await delFile(notePath(id), 'delete note');
+    const newIndex=index.filter(n=>n.id!==id);
+    await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
+    index=newIndex; delete noteCache[id];
+    flashStatus('deleted.');
+    location.hash='';
+  }catch(e){
+    setStatus('!! delete failed \u2014 click here to retry', doDelete);
+  }
+}
+
+/* ---------- Import .md ---------- */
+async function importFiles(files){
+  const list=Array.from(files);
+  if(!list.length) return;
+  const made=[];
+  for(let i=0;i<list.length;i++){
+    const f=list[i];
+    const text=await f.text();
+    const now=keyOf(new Date());
+    const note={id:newId(), title:f.name.replace(/\.(md|markdown|txt)$/i,''),
+                body:text, created:now, updated:now};
+    if(MODE==='local'){
+      noteCache[note.id]=note;
+      index.push({id:note.id,title:note.title,created:now,updated:now,words:wordsOf(text)});
+      continue;
+    }
+    setStatus('publishing '+(i+1)+'/'+list.length+'...');
+    try{
+      await putFile(notePath(note.id), JSON.stringify(note), 'note: '+note.title);
+      noteCache[note.id]=note;
+      made.push({id:note.id,title:note.title,created:now,updated:now,words:wordsOf(text)});
+    }catch(e){
+      setStatus('!! import stopped at "'+f.name+'" \u2014 fix and retry');
+      break;
+    }
+  }
+  if(MODE==='local'){ localSaveAll(Object.values(noteCache)); renderList(); flashStatus('imported.'); return; }
+  if(made.length){
+    try{
+      const newIndex=index.concat(made);
+      await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
+      index=newIndex;
+      flashStatus('imported '+made.length+' \u2713');
+    }catch(e){
+      setStatus('!! index update failed \u2014 click here to retry',
+        ()=>importFiles([]));
+    }
+  }
+  renderList();
+}
+
+/* ---------- Owner ---------- */
+function ownerClick(){
+  if(token){
+    if(dirtyEdit && !confirm('you have unsaved writing. log out anyway?')) return;
+    localStorage.removeItem(LS.token);
+    location.reload();
+  } else {
+    const t=prompt('paste your GitHub token (same one as the diary).\nit stays only in this browser.');
+    if(t && t.trim()){
+      localStorage.setItem(LS.token, t.trim());
+      location.reload();
+    }
+  }
+}
+function setTab(which){
+  const w=which==='write';
+  document.getElementById('tabWrite').classList.toggle('on',w);
+  document.getElementById('tabPreview').classList.toggle('on',!w);
+  document.getElementById('edBody').style.display=w?'':'none';
+  const pv=document.getElementById('edPreview');
+  pv.style.display=w?'none':'block';
+  if(!w){ pv.innerHTML=''; pv.appendChild(mdRender(document.getElementById('edBody').value)); }
+}
+function initUI(){
+  document.getElementById('ownerBtn').textContent = token ? 'log out' : 'owner';
+  document.getElementById('ownerBtn').style.display = (MODE==='remote') ? '' : 'none';
+  document.getElementById('ownerTools').style.display = canEdit() ? '' : 'none';
+}
+
+/* ---------- Wiring ---------- */
+document.getElementById('newNoteBtn').onclick=()=>{ location.hash='new'; };
+document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
+document.getElementById('importFile').onchange=e=>{ importFiles(e.target.files); e.target.value=''; };
+document.getElementById('backList').onclick=()=>{ location.hash=''; };
+document.getElementById('editLink').onclick=()=>{
+  location.hash='edit/'+decodeURIComponent(location.hash.slice(1));
+};
+document.getElementById('deleteLink').onclick=doDelete;
+document.getElementById('saveNoteBtn').onclick=doSave;
+document.getElementById('cancelBtn').onclick=()=>{
+  if(dirtyEdit && !confirm('discard your changes?')) return;
+  clearDraft(); dirtyEdit=false;
+  location.hash = editingId ? editingId : '';
+};
+document.getElementById('edTitle').addEventListener('input',onEdit);
+document.getElementById('edBody').addEventListener('input',onEdit);
+document.getElementById('tabWrite').onclick=()=>setTab('write');
+document.getElementById('tabPreview').onclick=()=>setTab('preview');
+document.getElementById('ownerBtn').onclick=ownerClick;
+
+/* ---------- Startup ---------- */
+async function main(){
+  initUI();
+  setStatus('loading...');
+  await loadIndex();
+  setStatus('');
+
+  /* offer back an interrupted draft */
+  if(canEdit()){
+    let d=null;
+    try{ d=JSON.parse(localStorage.getItem(LS.draft)); }catch(e){}
+    if(d && (d.title||d.body) &&
+       confirm('found an unsaved draft'+(d.title?(' of "'+d.title+'"'):'')+' \u2014 open it?')){
+      editingId=d.id||null;
+      show('viewEdit');
+      document.getElementById('edTitle').value=d.title||'';
+      document.getElementById('edBody').value=d.body||'';
+      updateEdWords(); setTab('write');
+      dirtyEdit=true;
+      location.hash=editingId ? 'edit/'+editingId : 'new';
+      return;
+    } else if(d){ clearDraft(); }
+  }
+  route();
+}
+main();
+</script>
+</body>
+</html>
