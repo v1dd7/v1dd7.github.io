@@ -62,6 +62,8 @@
     word-wrap: break-word;
   }
   .scrap img { max-width: 200px; display: block; }
+  .scrap.tweet { max-width: 360px; }
+  .scrap.tweet iframe { max-width: 100%; }
   .scrap .del {
     position: absolute; top: -8px; right: -8px;
     width: 16px; height: 16px;
@@ -97,7 +99,7 @@
   </div>
   <button id="addImgBtn" style="margin-top:6px;">toss in a small image</button>
   <input type="file" id="imgFile" accept="image/*">
-  <div class="hint">one tiny thing at a time. it publishes the moment you toss it.</div>
+  <div class="hint">one tiny thing at a time. it publishes the moment you toss it. tweet links turn into embedded tweets, and you can paste (ctrl+v) an image straight into the drawer.</div>
 </fieldset>
 
 <div id="pile"></div>
@@ -297,6 +299,11 @@ function render(){
       a.href=it.content; a.target='_blank'; a.rel='noopener';
       a.textContent = it.content.length>60 ? it.content.slice(0,60)+'...' : it.content;
       s.appendChild(a);
+      const tid=tweetIdFrom(it.content);
+      if(tid){
+        s.classList.add('tweet');
+        embedTweet(tid, s, a);
+      }
     } else {
       s.appendChild(document.createTextNode(it.content));
     }
@@ -355,6 +362,70 @@ function shrinkImage(file){
     img.src=URL.createObjectURL(file);
   });
 }
+
+/* ---------- Tweet embeds ----------
+   Tweet links (twitter.com / x.com) render as real embedded
+   tweets via Twitter's official widgets script, loaded lazily
+   only when a tweet is actually in the drawer. The plain link
+   stays as a fallback if the tweet is gone or the script is
+   blocked (ad blockers commonly block it). */
+function tweetIdFrom(url){
+  try{
+    const u=new URL(url);
+    const h=u.hostname.replace(/^www\./,'');
+    const isTw = h==='twitter.com' || h==='x.com' ||
+                 h.endsWith('.twitter.com') || h.endsWith('.x.com');
+    if(!isTw) return null;
+    const m=u.pathname.match(/\/status(?:es)?\/(\d+)/);
+    return m ? m[1] : null;
+  }catch(e){ return null; }
+}
+let twttrPromise=null;
+function ensureTwitterScript(){
+  if(twttrPromise) return twttrPromise;
+  twttrPromise=new Promise(res=>{
+    if(window.twttr && window.twttr.widgets){ res(window.twttr); return; }
+    const s=document.createElement('script');
+    s.src='https://platform.twitter.com/widgets.js';
+    s.async=true;
+    s.onload=()=>res(window.twttr||null);
+    s.onerror=()=>res(null);
+    document.head.appendChild(s);
+  });
+  return twttrPromise;
+}
+async function embedTweet(id, scrap, fallbackLink){
+  const twttr=await ensureTwitterScript();
+  if(!twttr || !twttr.widgets) return;   /* script blocked: link stays */
+  try{
+    const el=await twttr.widgets.createTweet(id, scrap,
+      {width:325, dnt:true, conversation:'none'});
+    if(el && fallbackLink) fallbackLink.style.display='none';
+  }catch(e){ /* deleted or unavailable tweet: link stays */ }
+}
+
+/* ---------- Paste images straight in (owner) ---------- */
+document.addEventListener('paste', async e=>{
+  if(!canEdit()) return;
+  const items=e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  const files=[];
+  for(const item of items){
+    if(item.kind==='file' && item.type.indexOf('image/')===0){
+      const f=item.getAsFile();
+      if(f) files.push(f);
+    }
+  }
+  if(!files.length) return;   /* plain text pastes proceed normally */
+  e.preventDefault();
+  for(const f of files){
+    let url=null;
+    if(f.type==='image/gif'){ url=await fileToDataURL(f); }
+    else { url=await shrinkImage(f); if(!url) url=await fileToDataURL(f); }
+    data.items.push({id:newId(), type:'image', content:url, added:keyOf(new Date())});
+  }
+  persist(); render();
+});
 
 /* ---------- Owner ---------- */
 function ownerClick(){
