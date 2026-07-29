@@ -244,16 +244,22 @@ async function apiReadText(path){
   return r.text();
 }
 async function putFile(path, str, msg){
-  const meta=await getMeta(path).catch(()=>null);
+  let meta=await getMeta(path).catch(()=>null);
   const body={message:msg, content:b64encode(str)};
   if(meta && meta.sha) body.sha=meta.sha;
   let r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
-  if(r.status===409){
-    const m2=await getMeta(path).catch(()=>null);
-    if(m2 && m2.sha) body.sha=m2.sha; else delete body.sha;
+  /* 409 = sha race, 422 = sha stale or file-state mismatch.
+     In both cases: re-fetch the truth and retry once. If the file
+     genuinely doesn't exist, send NO sha (a clean create). */
+  if(r.status===409 || r.status===422){
+    meta=await getMeta(path).catch(()=>null);
+    if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
     r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
   }
-  if(!r.ok) throw new Error('HTTP '+r.status);
+  if(!r.ok){
+    let detail=''; try{ detail=' - '+((await r.json()).message||''); }catch(e){}
+    throw new Error('HTTP '+r.status+detail);
+  }
 }
 async function delFile(path, msg){
   const meta=await getMeta(path);
@@ -508,7 +514,10 @@ async function doSave(){
     const prev=await loadNote(editingId) || {id:editingId, created:now};
     note={id:editingId, title:title, body:body, created:prev.created||now, updated:now};
   } else {
-    note={id:newId(), title:title, body:body, created:now, updated:now};
+    /* mint the id ONCE and lock it in, so a failed save that gets
+       retried overwrites the same file instead of making duplicates */
+    editingId=newId();
+    note={id:editingId, title:title, body:body, created:now, updated:now};
   }
   const entry={id:note.id, title:title, created:note.created, updated:now, words:wordsOf(body)};
 
