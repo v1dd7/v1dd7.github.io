@@ -147,7 +147,7 @@
 <hr>
 <div class="pagefoot">
   <span class="counter" id="noteCount">000</span> notes &middot;
-  <span class="counter" id="wordCount">0000000</span> words hoarded &middot; engine v2
+  <span class="counter" id="wordCount">0000000</span> words hoarded &middot; engine v3
 </div>
 
 <script>
@@ -232,10 +232,30 @@ function ghHeaders(extra){
   }, extra||{});
 }
 async function getMeta(path){
-  const r=await fetch(apiUrl(path),{headers:ghHeaders()});
+  const bust=(path.indexOf('?')>=0?'&':'?')+'_='+Date.now();
+  const r=await fetch(apiUrl(path)+bust,{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
   if(r.status===404) return null;
   if(!r.ok) throw new Error('HTTP '+r.status);
-  return r.json();
+  const j=await r.json().catch(()=>null);
+  if(j && typeof j==='object' && !Array.isArray(j) && typeof j.sha==='string') return j;
+  return null;
+}
+async function getShaViaListing(path){
+  const slash=path.lastIndexOf('/');
+  const dir=slash>=0?path.slice(0,slash):'';
+  const name=slash>=0?path.slice(slash+1):path;
+  const r=await fetch(apiUrl(dir)+'?_='+Date.now(),{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
+  if(!r.ok) return null;
+  const arr=await r.json().catch(()=>null);
+  if(!Array.isArray(arr)) return null;
+  const hit=arr.find(f=>f.name===name);
+  return hit && typeof hit.sha==='string' ? hit.sha : null;
 }
 async function apiReadText(path){
   const r=await fetch(apiUrl(path),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
@@ -257,9 +277,18 @@ async function putFile(path, str, msg){
     try{
       const meta=await getMeta(path).catch(()=>null);
       if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
-      const r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+      let r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
       if(r.ok) return;
       let detail=''; try{ detail=(await r.json()).message||''; }catch(e){}
+      if(/sha/i.test(detail)){
+        const sha=await getShaViaListing(path).catch(()=>null);
+        if(sha){
+          body.sha=sha;
+          r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+          if(r.ok) return;
+          try{ detail=(await r.json()).message||detail; }catch(e){}
+        }
+      }
       lastErr=new Error('HTTP '+r.status+(detail?' - '+detail:''));
       console.warn('[notes] save attempt '+(i+1)+' for '+path+' failed:', lastErr.message);
       if(!(r.status===409 || r.status===422 || r.status>=500)) break;

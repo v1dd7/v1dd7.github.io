@@ -70,8 +70,8 @@
 
 <div id="chrome">
   <h1>~ the world ~</h1>
-  <div class="subtitle">an endless canvas for me to doodle on</div>
-  <marquee scrollamount="3">*~ project completion date eta: never ~*</marquee>
+  <div class="subtitle">an endless canvas, growing one mark at a time</div>
+  <marquee scrollamount="3">*~ the world is under construction. it always will be ~*</marquee>
   <div class="navline">
     [ <a href="./">the diary</a> |
     <a href="junk.html">the junk drawer</a> |
@@ -113,7 +113,7 @@
 
 <div id="foot">
   <span class="counter" id="markCount">000000</span> marks across
-  <span class="counter" id="regionCount">0000</span> regions &middot; engine v1
+  <span class="counter" id="regionCount">0000</span> regions &middot; engine v2
 </div>
 
 <script>
@@ -215,10 +215,37 @@ function ghHeaders(extra){
   }, extra||{});
 }
 async function getMeta(path){
-  const r=await fetch(apiUrl(path),{headers:ghHeaders()});
+  /* cache-bust + force JSON metadata (not raw content) so we always
+     get the sha of the existing file */
+  const bust = (path.indexOf('?')>=0?'&':'?')+'_='+Date.now();
+  const r=await fetch(apiUrl(path)+bust,{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
   if(r.status===404) return null;
   if(!r.ok) throw new Error('HTTP '+r.status);
-  return r.json();
+  const j=await r.json().catch(()=>null);
+  /* a contents response for a file is an object with a string sha;
+     anything else (array, raw text, null) means "treat as unknown" */
+  if(j && typeof j==='object' && !Array.isArray(j) && typeof j.sha==='string') return j;
+  return null;
+}
+/* fallback sha lookup via the parent directory listing, which always
+   returns fresh per-file metadata even when a direct read was cached */
+async function getShaViaListing(path){
+  const slash=path.lastIndexOf('/');
+  const dir=slash>=0?path.slice(0,slash):'';
+  const name=slash>=0?path.slice(slash+1):path;
+  const bust='?_='+Date.now();
+  const r=await fetch(apiUrl(dir)+bust,{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
+  if(!r.ok) return null;
+  const arr=await r.json().catch(()=>null);
+  if(!Array.isArray(arr)) return null;
+  const hit=arr.find(f=>f.name===name);
+  return hit && typeof hit.sha==='string' ? hit.sha : null;
 }
 async function apiReadText(path){
   const r=await fetch(apiUrl(path),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
@@ -233,11 +260,23 @@ async function putFile(path, str, msg){
   for(let i=0;i<waits.length;i++){
     if(waits[i]) await sleep(waits[i]);
     try{
-      const meta=await getMeta(path).catch(()=>null);
+      let meta=await getMeta(path).catch(()=>null);
       if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
-      const r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+      let r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
       if(r.ok) return;
       let detail=''; try{ detail=(await r.json()).message||''; }catch(e){}
+      /* the specific "file exists but no sha given" / "sha mismatch"
+         case: recover the true sha from the directory listing and
+         retry immediately before falling through to the paced retries */
+      if(/sha/i.test(detail)){
+        const sha=await getShaViaListing(path).catch(()=>null);
+        if(sha){
+          body.sha=sha;
+          r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+          if(r.ok) return;
+          try{ detail=(await r.json()).message||detail; }catch(e){}
+        }
+      }
       lastErr=new Error('HTTP '+r.status+(detail?' - '+detail:''));
       console.warn('[world] save attempt '+(i+1)+' for '+path+' failed:', lastErr.message);
       if(!(r.status===409 || r.status===422 || r.status>=500)) break;
