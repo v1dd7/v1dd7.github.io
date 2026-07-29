@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>the world</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: #c0c0c0; color: #000;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 14px; margin: 0;
+    display: flex; flex-direction: column;
+  }
+  #chrome { padding: 8px 12px 0; }
+  h1 { text-align: center; font-size: 24px; margin: 2px 0 0; font-weight: bold; }
+  .subtitle { text-align: center; font-size: 11px; color: #333; margin: 0 0 2px; }
+  marquee { display: block; font-size: 11px; color: #000080; margin: 0; }
+  .navline { text-align: center; font-size: 12px; margin: 4px 0; }
+  .linky { color: #0000EE; text-decoration: underline; cursor: pointer; }
+  .linky:active { color: #EE0000; }
+  a { color: #0000EE; }
+  hr { border: none; border-top: 1px solid #808080; border-bottom: 1px solid #fff; margin: 4px 0; }
+  #status { color: #cc0000; font-size: 12px; margin-left: 8px; }
+  #status.clicky { text-decoration: underline; cursor: pointer; }
+
+  button {
+    background: #c0c0c0; border: 2px outset #fff;
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+    padding: 2px 8px; cursor: pointer; color: #000;
+  }
+  button:active, button.on { border-style: inset; }
+  button.on { font-weight: bold; }
+
+  #toolbar {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding: 4px 12px; font-size: 12px;
+  }
+  .swatch { width: 18px; height: 18px; border: 1px solid #000; cursor: pointer; padding: 0; }
+  .swatch.sel { outline: 2px solid #000; outline-offset: 1px; }
+  #toolbar .spacer { flex: 1; }
+  #coords { font-family: "Courier New", monospace; font-size: 11px; color: #333; }
+
+  #stage { flex: 1; position: relative; border-top: 2px inset #fff; min-height: 0; }
+  #world { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+           background: #fff; touch-action: none; }
+  #world.hand { cursor: grab; }
+  #world.hand:active { cursor: grabbing; }
+  #world.pen { cursor: crosshair; }
+  #world.text { cursor: text; }
+  #world.eraser { cursor: cell; }
+
+  #help {
+    position: absolute; top: 8px; left: 8px; max-width: 280px;
+    background: #c0c0c0; border: 2px outset #fff; padding: 8px;
+    font-size: 12px; line-height: 1.45; display: none;
+  }
+  #help.open { display: block; }
+
+  #foot { padding: 3px 12px 5px; text-align: center; font-size: 11px; color: #333; }
+  .counter {
+    background: #000; color: #00ff00; font-family: "Courier New", monospace;
+    font-size: 11px; padding: 0 5px; letter-spacing: 2px; border: 1px solid #555;
+  }
+</style>
+</head>
+<body>
+
+<div id="chrome">
+  <h1>~ the world ~</h1>
+  <div class="subtitle">an endless canvas, growing one mark at a time</div>
+  <marquee scrollamount="3">*~ the world is under construction. it always will be ~*</marquee>
+  <div class="navline">
+    [ <a href="./">the diary</a> |
+    <a href="junk.html">the junk drawer</a> |
+    <a href="notes.html">notes</a> |
+    <span class="linky" id="helpBtn">?</span> |
+    <span class="linky" id="ownerBtn">owner</span> ]
+    <span id="status"></span>
+  </div>
+</div>
+
+<div id="toolbar">
+  <button id="toolHand" class="on" title="drag to look around">explore</button>
+  <span id="ownerTools" style="display:none;">
+    <button id="toolPen" title="draw">pen</button>
+    <button id="toolText" title="place a label">text</button>
+    <button id="toolEraser" title="click strokes to remove them">eraser</button>
+    <span id="swatches"></span>
+    <input type="range" id="penSize" min="1" max="16" value="3" title="pen size">
+    <button id="undoBtn" title="undo last mark">undo</button>
+    <button id="publishBtn" style="display:none;"><b>publish <span id="dirtyCount">0</span> marks</b></button>
+  </span>
+  <span class="spacer"></span>
+  <span id="coords">0, 0 &middot; 1.0x</span>
+  <button id="homeBtn" title="back to the center of the world">0,0</button>
+</div>
+
+<div id="stage">
+  <canvas id="world" class="hand"></canvas>
+  <div id="help">
+    <b>how to wander:</b> drag to pan, scroll to zoom (pinch on a phone).
+    the address bar remembers where you are, so you can link someone to
+    any spot in the world.<br><br>
+    <span id="helpOwner" style="display:none;"><b>how to build:</b> pick the pen and draw
+    straight onto the world. text places a label. eraser removes marks you
+    click. nothing is public until you hit publish.<br><br></span>
+    this world is drawn by one person, a little at a time.
+  </div>
+</div>
+
+<div id="foot">
+  <span class="counter" id="markCount">000000</span> marks across
+  <span class="counter" id="regionCount">0000</span> regions &middot; engine v1
+</div>
+
+<script>
+/* ============================================================
+   THE WORLD — an infinite, zoomable, hand-drawn canvas.
+
+   HOW IT'S STORED:
+   The world is invisibly divided into square regions ("chunks")
+   of 1024x1024 world units. Each chunk that contains anything is
+   its own file in the repo:  world/chunk_<cx>_<cy>.json
+   A small directory file, world-index.json, lists which chunks
+   exist (and how many marks each holds) so visitors know what to
+   fetch. The chunk files are the source of truth; the index is
+   bookkeeping and SELF-REPAIRS on owner visits, same as the
+   notes room.
+
+   Marks are vector strokes and text labels in absolute world
+   coordinates, so they stay tiny in storage and crisp at any
+   zoom. Publishing is batched: draw freely, then publish the
+   session; each dirty chunk is committed with settling pauses
+   and retries (GitHub dislikes rapid-fire commits).
+   Unpublished work is mirrored to this browser's storage so a
+   closed tab never loses a session.
+   ============================================================ */
+
+const CHUNK = 1024;
+const INDEX_PATH = 'world-index.json';
+const LS = {
+  token:  'diaryGrid.token',      /* shared with the other rooms */
+  pending:'worldRoom.pending',
+  local:  'worldRoom.v1'
+};
+
+function detectRepo(){
+  const h=location.hostname;
+  if(!h.endsWith('.github.io')) return null;
+  const owner=h.split('.')[0];
+  const seg=location.pathname.split('/').filter(Boolean);
+  const last=seg[seg.length-1]||'';
+  const dirs=last.includes('.') ? seg.slice(0,-1) : seg;
+  const repo=dirs.length ? dirs[0] : h;
+  return {owner:owner, repo:repo};
+}
+const REPO=detectRepo();
+const MODE=REPO ? 'remote' : 'local';
+let token=localStorage.getItem(LS.token)||'';
+function canEdit(){ return MODE==='local' || !!token; }
+
+/* ---------- world state ---------- */
+let chunks={};            /* key -> {strokes:[...]} (loaded or created) */
+let chunkIndex={};        /* key -> mark count, from world-index.json */
+let missingFetched={};    /* key -> true once we've tried fetching */
+let dirty=new Set();      /* chunk keys with unpublished changes */
+let undoStack=[];         /* [{type:'add'|'del', key, stroke}] */
+
+let cam={ x:0, y:0, z:1 };     /* center + zoom (screen px per world unit) */
+let tool='hand';
+let penColor='#000000';
+let penSizePx=3;
+
+const COLORS=['#000000','#cc3333','#e07000','#e0c000','#339933','#3366cc','#9933cc','#8a5a2b','#999999','#ffffff'];
+
+/* ---------- ids, dates ---------- */
+function newId(){ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6); }
+function keyOf(d){ return d.toISOString().slice(0,10); }
+
+/* ---------- status ---------- */
+let statusTimer;
+function setStatus(msg, retryFn){
+  const s=document.getElementById('status');
+  clearTimeout(statusTimer);
+  s.textContent=msg;
+  s.classList.toggle('clicky', !!retryFn);
+  s.onclick=retryFn||null;
+}
+function flashStatus(msg){
+  setStatus(msg,null);
+  statusTimer=setTimeout(()=>setStatus('',null),1800);
+}
+
+/* ---------- base64 + GitHub API (battle-tested versions) ---------- */
+function b64encode(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH){
+    bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH));
+  }
+  return btoa(bin);
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function apiUrl(path){
+  return 'https://api.github.com/repos/'+REPO.owner+'/'+REPO.repo+'/contents/'+path;
+}
+function ghHeaders(extra){
+  return Object.assign({
+    'Authorization':'Bearer '+token,
+    'Accept':'application/vnd.github+json',
+    'X-GitHub-Api-Version':'2022-11-28'
+  }, extra||{});
+}
+async function getMeta(path){
+  const r=await fetch(apiUrl(path),{headers:ghHeaders()});
+  if(r.status===404) return null;
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+async function apiReadText(path){
+  const r=await fetch(apiUrl(path),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
+  if(r.status===404) return null;
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.text();
+}
+async function putFile(path, str, msg){
+  const body={message:msg, content:b64encode(str)};
+  const waits=[0, 1000, 2200, 4500];
+  let lastErr=null;
+  for(let i=0;i<waits.length;i++){
+    if(waits[i]) await sleep(waits[i]);
+    try{
+      const meta=await getMeta(path).catch(()=>null);
+      if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
+      const r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+      if(r.ok) return;
+      let detail=''; try{ detail=(await r.json()).message||''; }catch(e){}
+      lastErr=new Error('HTTP '+r.status+(detail?' - '+detail:''));
+      console.warn('[world] save attempt '+(i+1)+' for '+path+' failed:', lastErr.message);
+      if(!(r.status===409 || r.status===422 || r.status>=500)) break;
+    }catch(e){
+      lastErr=e;
+      console.warn('[world] save attempt '+(i+1)+' for '+path+' errored:', e);
+    }
+  }
+  throw lastErr || new Error('save failed');
+}
+
+/* ---------- reads ---------- */
+async function readJson(path){
+  if(MODE==='remote' && token){
+    const t=await apiReadText(path);
+    return t===null ? null : JSON.parse(t);
+  }
+  const r=await fetch(path+'?t='+Date.now());
+  if(!r.ok) return null;
+  return r.json();
+}
+
+/* ---------- chunk math ---------- */
+function chunkOf(x,y){ return Math.floor(x/CHUNK)+'_'+Math.floor(y/CHUNK); }
+function chunkPath(key){ return 'world/chunk_'+key+'.json'; }
+function ensureChunk(key){
+  if(!chunks[key]) chunks[key]={strokes:[]};
+  return chunks[key];
+}
+function visibleChunkKeys(){
+  const c=document.getElementById('world');
+  const wLeft = cam.x - (c.clientWidth/2)/cam.z;
+  const wTop = cam.y - (c.clientHeight/2)/cam.z;
+  const wRight = cam.x + (c.clientWidth/2)/cam.z;
+  const wBottom = cam.y + (c.clientHeight/2)/cam.z;
+  const x0=Math.floor(wLeft/CHUNK)-1, x1=Math.floor(wRight/CHUNK)+1;
+  const y0=Math.floor(wTop/CHUNK)-1, y1=Math.floor(wBottom/CHUNK)+1;
+  const keys=[];
+  for(let cy=y0; cy<=y1; cy++)
+    for(let cx=x0; cx<=x1; cx++)
+      keys.push(cx+'_'+cy);
+  return keys;
+}
+
+/* ---------- lazy loading ---------- */
+let loadQueue=false;
+async function loadVisibleChunks(){
+  if(loadQueue) return;
+  loadQueue=true;
+  try{
+    for(const key of visibleChunkKeys()){
+      if(chunks[key] || missingFetched[key]) continue;
+      if(MODE==='remote' && !(key in chunkIndex)) { missingFetched[key]=true; continue; }
+      missingFetched[key]=true;
+      try{
+        const d = MODE==='remote' ? await readJson(chunkPath(key)) : null;
+        if(d && Array.isArray(d.strokes)){ chunks[key]=d; draw(); }
+      }catch(e){ console.warn('[world] chunk load failed', key, e); }
+    }
+  }finally{ loadQueue=false; }
+}
+
+/* ---------- coordinate transforms ---------- */
+const canvas=document.getElementById('world');
+const ctx=canvas.getContext('2d');
+function fitCanvas(){
+  const ratio=window.devicePixelRatio||1;
+  canvas.width=Math.round(canvas.clientWidth*ratio);
+  canvas.height=Math.round(canvas.clientHeight*ratio);
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+  draw();
+}
+window.addEventListener('resize',fitCanvas);
+function s2w(px,py){
+  return [ cam.x + (px - canvas.clientWidth/2)/cam.z,
+           cam.y + (py - canvas.clientHeight/2)/cam.z ];
+}
+function w2s(wx,wy){
+  return [ (wx - cam.x)*cam.z + canvas.clientWidth/2,
+           (wy - cam.y)*cam.z + canvas.clientHeight/2 ];
+}
+
+/* ---------- rendering ---------- */
+let curStroke=null;
+function draw(){
+  const W=canvas.clientWidth, H=canvas.clientHeight;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+
+  /* faint origin cross so the center of the world feels like a place */
+  const o=w2s(0,0);
+  if(o[0]>-50&&o[0]<W+50&&o[1]>-50&&o[1]<H+50){
+    ctx.strokeStyle='#e8e8e8'; ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(o[0]-14,o[1]); ctx.lineTo(o[0]+14,o[1]);
+    ctx.moveTo(o[0],o[1]-14); ctx.lineTo(o[0],o[1]+14);
+    ctx.stroke();
+  }
+
+  ctx.lineJoin=ctx.lineCap='round';
+  for(const key of visibleChunkKeys()){
+    const ch=chunks[key];
+    if(!ch) continue;
+    for(const st of ch.strokes) drawMark(st);
+  }
+  if(curStroke) drawMark(curStroke);
+
+  if(!Object.keys(chunkIndex).length && !Object.keys(chunks).length && !curStroke){
+    ctx.fillStyle='#bbb';
+    ctx.font='14px "Times New Roman"';
+    ctx.textAlign='center';
+    ctx.fillText('an empty world.', W/2, H/2 - 10);
+    ctx.fillText(canEdit()?'pick the pen and make the first mark.':'the owner has not begun yet.', W/2, H/2 + 10);
+    ctx.textAlign='start';
+  }
+}
+function drawMark(st){
+  if(st.t==='x'){
+    const p=w2s(st.x,st.y);
+    const size=st.s*cam.z;
+    if(size<3) return;                    /* too small to read; skip */
+    ctx.fillStyle=st.c;
+    ctx.font=size+'px "Times New Roman"';
+    ctx.fillText(st.tx, p[0], p[1]);
+    return;
+  }
+  if(!st.pts || !st.pts.length) return;
+  ctx.strokeStyle=st.c;
+  ctx.lineWidth=Math.max(st.w*cam.z, 0.4);
+  ctx.beginPath();
+  let p=w2s(st.pts[0][0], st.pts[0][1]);
+  ctx.moveTo(p[0],p[1]);
+  for(let i=1;i<st.pts.length;i++){
+    p=w2s(st.pts[i][0], st.pts[i][1]);
+    ctx.lineTo(p[0],p[1]);
+  }
+  if(st.pts.length===1) ctx.lineTo(p[0]+0.1,p[1]+0.1);
+  ctx.stroke();
+}
+
+/* ---------- URL hash <-> position ---------- */
+let hashTimer=null;
+function updateHash(){
+  clearTimeout(hashTimer);
+  hashTimer=setTimeout(()=>{
+    const h='@'+Math.round(cam.x)+','+Math.round(cam.y)+','+cam.z.toFixed(2);
+    history.replaceState(null,'','#'+h);
+  },400);
+}
+function readHash(){
+  const m=location.hash.match(/^#@(-?\d+),(-?\d+),([\d.]+)/);
+  if(m){ cam.x=+m[1]; cam.y=+m[2]; cam.z=Math.min(8,Math.max(0.05,+m[3])); }
+}
+function updateCoords(){
+  document.getElementById('coords').textContent=
+    Math.round(cam.x)+', '+Math.round(cam.y)+' \u00b7 '+cam.z.toFixed(1)+'x';
+}
+function moved(){ updateCoords(); updateHash(); loadVisibleChunks(); draw(); }
+
+/* ---------- persistence of unpublished work ---------- */
+function markDirty(key){
+  dirty.add(key);
+  const snap={};
+  dirty.forEach(k=>{ snap[k]=chunks[k]; });
+  try{ localStorage.setItem(LS.pending, JSON.stringify(snap)); }catch(e){}
+  updatePublishUI();
+  if(MODE==='local') saveLocal();
+}
+function saveLocal(){
+  try{ localStorage.setItem(LS.local, JSON.stringify({chunks:chunks})); }catch(e){ setStatus('!! save failed (storage full?)'); }
+}
+function updatePublishUI(){
+  const n=[...dirty].reduce((t,k)=>t+ (chunks[k]?1:0), 0);
+  let marks=0;
+  dirty.forEach(k=>{ if(chunks[k]) marks+=chunks[k].strokes.length; });
+  const btn=document.getElementById('publishBtn');
+  if(MODE==='remote' && token){
+    btn.style.display = dirty.size ? '' : 'none';
+    document.getElementById('dirtyCount').textContent=dirty.size+' region'+(dirty.size===1?'':'s');
+  }
+  updateFoot();
+}
+window.addEventListener('beforeunload',e=>{
+  if(MODE==='remote' && dirty.size){ e.preventDefault(); e.returnValue=''; }
+});
+
+/* ---------- publishing ---------- */
+let publishing=false;
+async function publish(){
+  if(MODE!=='remote' || !token || publishing) return;
+  publishing=true;
+  const keys=[...dirty];
+  try{
+    for(let i=0;i<keys.length;i++){
+      setStatus('publishing region '+(i+1)+'/'+keys.length+'...');
+      if(i>0) await sleep(1200);
+      await putFile(chunkPath(keys[i]), JSON.stringify(chunks[keys[i]]), 'world: region '+keys[i]);
+      dirty.delete(keys[i]);
+      chunkIndex[keys[i]]=chunks[keys[i]].strokes.length;
+    }
+    setStatus('updating the map...');
+    await sleep(1500);
+    try{
+      await putFile(INDEX_PATH, JSON.stringify({chunks:chunkIndex}), 'world index');
+      flashStatus('published \u2713');
+    }catch(e){
+      console.warn('[world] index update failed (will self-repair):', e);
+      setStatus('marks saved \u2713 \u2014 the map will tidy itself on your next visit');
+    }
+    try{ localStorage.removeItem(LS.pending); }catch(e){}
+  }catch(e){
+    console.error('[world] publish failed:', e);
+    setStatus('!! publish failed \u2014 click here to retry', publish);
+  }finally{
+    publishing=false;
+    updatePublishUI();
+  }
+}
+document.getElementById('publishBtn').onclick=publish;
+
+/* ---------- self-healing index ---------- */
+async function listChunkFiles(){
+  const r=await fetch(apiUrl('world'),{headers:ghHeaders()});
+  if(r.status===404) return [];
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const arr=await r.json();
+  return (Array.isArray(arr)?arr:[])
+    .filter(f=>f.type==='file' && /^chunk_-?\d+_-?\d+\.json$/.test(f.name))
+    .map(f=>f.name.replace(/^chunk_/,'').replace(/\.json$/,''));
+}
+async function reconcileIndex(){
+  if(MODE!=='remote' || !token) return;
+  try{
+    const keys=await listChunkFiles();
+    const onDisk=new Set(keys);
+    const inIndex=new Set(Object.keys(chunkIndex));
+    const missing=keys.filter(k=>!inIndex.has(k));
+    const stale=Object.keys(chunkIndex).filter(k=>!onDisk.has(k));
+    if(!missing.length && !stale.length) return;
+    setStatus('surveying the land...');
+    for(const k of missing){
+      const d=await readJson(chunkPath(k)).catch(()=>null);
+      chunkIndex[k]=(d && Array.isArray(d.strokes)) ? d.strokes.length : 0;
+      if(d) chunks[k]=d;
+    }
+    stale.forEach(k=>{ delete chunkIndex[k]; });
+    await putFile(INDEX_PATH, JSON.stringify({chunks:chunkIndex}), 'world index (self-repair)');
+    flashStatus('map tidied \u2713');
+  }catch(e){
+    console.warn('[world] survey skipped:', e);
+    setStatus('');
+  }
+}
+
+/* ---------- tools & input ---------- */
+function setTool(t){
+  if(t!=='hand' && !canEdit()) return;
+  tool=t;
+  ['Hand','Pen','Text','Eraser'].forEach(n=>{
+    document.getElementById('tool'+n).classList.toggle('on', n.toLowerCase()===t);
+  });
+  canvas.className=t;
+}
+document.getElementById('toolHand').onclick=()=>setTool('hand');
+document.getElementById('toolPen').onclick=()=>setTool('pen');
+document.getElementById('toolText').onclick=()=>setTool('text');
+document.getElementById('toolEraser').onclick=()=>setTool('eraser');
+document.getElementById('penSize').oninput=e=>{ penSizePx=+e.target.value; };
+document.getElementById('homeBtn').onclick=()=>{ cam.x=0; cam.y=0; cam.z=1; moved(); };
+document.getElementById('helpBtn').onclick=()=>{
+  document.getElementById('help').classList.toggle('open');
+};
+(function(){
+  const box=document.getElementById('swatches');
+  COLORS.forEach((c,i)=>{
+    const b=document.createElement('button');
+    b.className='swatch'+(i===0?' sel':'');
+    b.style.background=c; b.title=c;
+    b.onclick=()=>{
+      penColor=c;
+      Array.from(box.children).forEach(el=>el.classList.remove('sel'));
+      b.classList.add('sel');
+    };
+    box.appendChild(b);
+  });
+})();
+
+function round1(n){ return Math.round(n*10)/10; }
+
+/* mouse */
+let dragging=false, lastPos=null;
+canvas.addEventListener('mousedown',e=>{
+  const pos=[e.offsetX,e.offsetY];
+  if(tool==='pen' && canEdit()){
+    dragging=true;
+    const w=s2w(pos[0],pos[1]);
+    curStroke={ id:newId(), t:'p', c:penColor, w:penSizePx/cam.z, pts:[[round1(w[0]),round1(w[1])]] };
+  } else if(tool==='eraser' && canEdit()){
+    dragging=true;
+    eraseAt(pos[0],pos[1]);
+  } else if(tool==='text' && canEdit()){
+    const w=s2w(pos[0],pos[1]);
+    const tx=prompt('label text:');
+    if(tx && tx.trim()){
+      const st={ id:newId(), t:'x', c:penColor, s:round1(18/cam.z), x:round1(w[0]), y:round1(w[1]), tx:tx.trim().slice(0,120) };
+      const key=chunkOf(st.x,st.y);
+      ensureChunk(key).strokes.push(st);
+      undoStack.push({type:'add', key:key, stroke:st});
+      markDirty(key); draw();
+    }
+  } else {
+    dragging=true; lastPos=pos;
+  }
+});
+canvas.addEventListener('mousemove',e=>{
+  if(!dragging) return;
+  const pos=[e.offsetX,e.offsetY];
+  if(tool==='pen' && curStroke){
+    const w=s2w(pos[0],pos[1]);
+    curStroke.pts.push([round1(w[0]),round1(w[1])]);
+    draw();
+  } else if(tool==='eraser'){
+    eraseAt(pos[0],pos[1]);
+  } else if(lastPos){
+    cam.x -= (pos[0]-lastPos[0])/cam.z;
+    cam.y -= (pos[1]-lastPos[1])/cam.z;
+    lastPos=pos;
+    moved();
+  }
+});
+window.addEventListener('mouseup',()=>{
+  if(curStroke){
+    const key=chunkOf(curStroke.pts[0][0], curStroke.pts[0][1]);
+    ensureChunk(key).strokes.push(curStroke);
+    undoStack.push({type:'add', key:key, stroke:curStroke});
+    markDirty(key);
+    curStroke=null;
+    draw();
+  }
+  dragging=false; lastPos=null;
+});
+
+/* wheel zoom toward cursor */
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=Math.pow(1.0015, -e.deltaY);
+  const before=s2w(e.offsetX,e.offsetY);
+  cam.z=Math.min(8, Math.max(0.05, cam.z*factor));
+  const after=s2w(e.offsetX,e.offsetY);
+  cam.x += before[0]-after[0];
+  cam.y += before[1]-after[1];
+  moved();
+},{passive:false});
+
+/* touch: 1 finger = tool action, 2 fingers = pinch zoom + pan */
+let touchState=null;
+function tpos(t){ const r=canvas.getBoundingClientRect(); return [t.clientX-r.left, t.clientY-r.top]; }
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(e.touches.length===1){
+    const p=tpos(e.touches[0]);
+    if(tool==='pen' && canEdit()){
+      const w=s2w(p[0],p[1]);
+      curStroke={ id:newId(), t:'p', c:penColor, w:penSizePx/cam.z, pts:[[round1(w[0]),round1(w[1])]] };
+    } else if(tool==='eraser' && canEdit()){
+      eraseAt(p[0],p[1]);
+    } else { touchState={mode:'pan', last:p}; }
+  } else if(e.touches.length===2){
+    curStroke=null;
+    const a=tpos(e.touches[0]), b=tpos(e.touches[1]);
+    touchState={ mode:'pinch',
+      dist:Math.hypot(a[0]-b[0],a[1]-b[1]),
+      mid:[(a[0]+b[0])/2,(a[1]+b[1])/2] };
+  }
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1){
+    const p=tpos(e.touches[0]);
+    if(curStroke){
+      const w=s2w(p[0],p[1]);
+      curStroke.pts.push([round1(w[0]),round1(w[1])]); draw();
+    } else if(tool==='eraser' && canEdit()){
+      eraseAt(p[0],p[1]);
+    } else if(touchState && touchState.mode==='pan'){
+      cam.x -= (p[0]-touchState.last[0])/cam.z;
+      cam.y -= (p[1]-touchState.last[1])/cam.z;
+      touchState.last=p; moved();
+    }
+  } else if(e.touches.length===2 && touchState && touchState.mode==='pinch'){
+    const a=tpos(e.touches[0]), b=tpos(e.touches[1]);
+    const dist=Math.hypot(a[0]-b[0],a[1]-b[1]);
+    const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const before=s2w(mid[0],mid[1]);
+    cam.z=Math.min(8, Math.max(0.05, cam.z*(dist/touchState.dist)));
+    const after=s2w(mid[0],mid[1]);
+    cam.x += before[0]-after[0] - (mid[0]-touchState.mid[0])/cam.z;
+    cam.y += before[1]-after[1] - (mid[1]-touchState.mid[1])/cam.z;
+    touchState.dist=dist; touchState.mid=mid;
+    moved();
+  }
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  if(curStroke && e.touches.length===0){
+    const key=chunkOf(curStroke.pts[0][0], curStroke.pts[0][1]);
+    ensureChunk(key).strokes.push(curStroke);
+    undoStack.push({type:'add', key:key, stroke:curStroke});
+    markDirty(key);
+    curStroke=null; draw();
+  }
+  if(e.touches.length===0) touchState=null;
+});
+
+/* ---------- eraser ---------- */
+function distToSeg(px,py, ax,ay, bx,by){
+  const dx=bx-ax, dy=by-ay;
+  const len2=dx*dx+dy*dy;
+  let t = len2 ? ((px-ax)*dx+(py-ay)*dy)/len2 : 0;
+  t=Math.max(0,Math.min(1,t));
+  const cx=ax+t*dx, cy=ay+t*dy;
+  return Math.hypot(px-cx, py-cy);
+}
+function eraseAt(sx,sy){
+  const w=s2w(sx,sy);
+  const radius=8/cam.z;
+  for(const key of visibleChunkKeys()){
+    const ch=chunks[key];
+    if(!ch) continue;
+    for(let i=ch.strokes.length-1;i>=0;i--){
+      const st=ch.strokes[i];
+      let hit=false;
+      if(st.t==='x'){
+        hit = Math.hypot(w[0]-st.x, w[1]-st.y) < Math.max(radius, st.s);
+      } else {
+        for(let j=0;j<st.pts.length && !hit;j++){
+          const a=st.pts[j], b=st.pts[Math.min(j+1,st.pts.length-1)];
+          if(distToSeg(w[0],w[1], a[0],a[1], b[0],b[1]) < radius + st.w/2) hit=true;
+        }
+      }
+      if(hit){
+        ch.strokes.splice(i,1);
+        undoStack.push({type:'del', key:key, stroke:st});
+        markDirty(key);
+        draw();
+        return;   /* one mark per pass keeps erasing deliberate */
+      }
+    }
+  }
+}
+
+/* ---------- undo ---------- */
+document.getElementById('undoBtn').onclick=()=>{
+  const a=undoStack.pop();
+  if(!a) return;
+  const ch=ensureChunk(a.key);
+  if(a.type==='add'){
+    const i=ch.strokes.findIndex(s=>s.id===a.stroke.id);
+    if(i>=0) ch.strokes.splice(i,1);
+  } else {
+    ch.strokes.push(a.stroke);
+  }
+  markDirty(a.key);
+  draw();
+};
+
+/* ---------- footer ---------- */
+function updateFoot(){
+  let marks=0;
+  Object.keys(chunkIndex).forEach(k=>{ marks+=chunkIndex[k]||0; });
+  dirty.forEach(k=>{ if(chunks[k] && !(k in chunkIndex)) marks+=chunks[k].strokes.length; });
+  document.getElementById('markCount').textContent=String(marks).padStart(6,'0');
+  document.getElementById('regionCount').textContent=
+    String(Object.keys(chunkIndex).length + [...dirty].filter(k=>!(k in chunkIndex)).length).padStart(4,'0');
+}
+
+/* ---------- owner ---------- */
+function ownerClick(){
+  if(token){
+    if(dirty.size && !confirm('you have unpublished marks. log out anyway?')) return;
+    localStorage.removeItem(LS.token);
+    location.reload();
+  } else {
+    const t=prompt('paste your GitHub token (same one as the diary).\nit stays only in this browser.');
+    if(t && t.trim()){
+      localStorage.setItem(LS.token, t.trim());
+      location.reload();
+    }
+  }
+}
+document.getElementById('ownerBtn').onclick=ownerClick;
+function initUI(){
+  document.getElementById('ownerBtn').textContent = token ? 'log out' : 'owner';
+  document.getElementById('ownerBtn').style.display = (MODE==='remote') ? '' : 'none';
+  document.getElementById('ownerTools').style.display = canEdit() ? '' : 'none';
+  document.getElementById('helpOwner').style.display = canEdit() ? '' : 'none';
+}
+
+/* ---------- startup ---------- */
+async function main(){
+  initUI();
+  readHash();
+  fitCanvas();
+  updateCoords();
+  setStatus('loading the world...');
+
+  if(MODE==='local'){
+    try{
+      const d=JSON.parse(localStorage.getItem(LS.local));
+      if(d && d.chunks) chunks=d.chunks;
+    }catch(e){}
+    Object.keys(chunks).forEach(k=>{ chunkIndex[k]=chunks[k].strokes.length; });
+  } else {
+    try{
+      const idx=await readJson(INDEX_PATH);
+      if(idx && idx.chunks) chunkIndex=idx.chunks;
+    }catch(e){ console.warn('[world] index load failed:', e); }
+    await reconcileIndex();
+    /* unpublished marks from a previous session */
+    if(token){
+      let pending=null;
+      try{ pending=JSON.parse(localStorage.getItem(LS.pending)); }catch(e){}
+      if(pending && Object.keys(pending).length &&
+         confirm('found unpublished marks from a previous session \u2014 restore them?')){
+        Object.keys(pending).forEach(k=>{
+          chunks[k]=pending[k];
+          dirty.add(k);
+        });
+      } else {
+        try{ localStorage.removeItem(LS.pending); }catch(e){}
+      }
+    }
+  }
+  setStatus('');
+  updatePublishUI();
+  updateFoot();
+  await loadVisibleChunks();
+  draw();
+}
+main();
+</script>
+</body>
+</html>
