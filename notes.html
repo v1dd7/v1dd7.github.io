@@ -147,7 +147,7 @@
 <hr>
 <div class="pagefoot">
   <span class="counter" id="noteCount">000</span> notes &middot;
-  <span class="counter" id="wordCount">0000000</span> words hoarded
+  <span class="counter" id="wordCount">0000000</span> words hoarded &middot; engine v2
 </div>
 
 <script>
@@ -243,32 +243,97 @@ async function apiReadText(path){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.text();
 }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+/* GitHub sometimes rejects the second of two rapid commits to the
+   same repo (409/422) while the first is still settling. So every
+   write retries with growing pauses, re-fetching the file's current
+   sha each attempt. Real errors (401/403/404) stop immediately. */
 async function putFile(path, str, msg){
-  let meta=await getMeta(path).catch(()=>null);
   const body={message:msg, content:b64encode(str)};
-  if(meta && meta.sha) body.sha=meta.sha;
-  let r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
-  /* 409 = sha race, 422 = sha stale or file-state mismatch.
-     In both cases: re-fetch the truth and retry once. If the file
-     genuinely doesn't exist, send NO sha (a clean create). */
-  if(r.status===409 || r.status===422){
-    meta=await getMeta(path).catch(()=>null);
-    if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
-    r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+  const waits=[0, 1000, 2200, 4500];
+  let lastErr=null;
+  for(let i=0;i<waits.length;i++){
+    if(waits[i]) await sleep(waits[i]);
+    try{
+      const meta=await getMeta(path).catch(()=>null);
+      if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
+      const r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+      if(r.ok) return;
+      let detail=''; try{ detail=(await r.json()).message||''; }catch(e){}
+      lastErr=new Error('HTTP '+r.status+(detail?' - '+detail:''));
+      console.warn('[notes] save attempt '+(i+1)+' for '+path+' failed:', lastErr.message);
+      if(!(r.status===409 || r.status===422 || r.status>=500)) break;
+    }catch(e){
+      lastErr=e;
+      console.warn('[notes] save attempt '+(i+1)+' for '+path+' errored:', e);
+    }
   }
-  if(!r.ok){
-    let detail=''; try{ detail=' - '+((await r.json()).message||''); }catch(e){}
-    throw new Error('HTTP '+r.status+detail);
-  }
+  throw lastErr || new Error('save failed');
 }
 async function delFile(path, msg){
-  const meta=await getMeta(path);
-  if(!meta) return;
-  const r=await fetch(apiUrl(path),{
-    method:'DELETE', headers:ghHeaders(),
-    body:JSON.stringify({message:msg, sha:meta.sha})
-  });
+  const waits=[0, 1000, 2500];
+  let lastErr=null;
+  for(let i=0;i<waits.length;i++){
+    if(waits[i]) await sleep(waits[i]);
+    try{
+      const meta=await getMeta(path);
+      if(!meta) return;
+      const r=await fetch(apiUrl(path),{
+        method:'DELETE', headers:ghHeaders(),
+        body:JSON.stringify({message:msg, sha:meta.sha})
+      });
+      if(r.ok) return;
+      let detail=''; try{ detail=(await r.json()).message||''; }catch(e){}
+      lastErr=new Error('HTTP '+r.status+(detail?' - '+detail:''));
+      console.warn('[notes] delete attempt '+(i+1)+' for '+path+' failed:', lastErr.message);
+      if(!(r.status===409 || r.status===422 || r.status>=500)) break;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr || new Error('delete failed');
+}
+
+/* ---------- Self-healing index ----------
+   The notes FILES are the source of truth; the index is just a
+   directory listing. On every owner visit, compare the folder
+   against the index: adopt note files the index missed, drop
+   entries whose file is gone, republish if anything changed.
+   This automatically repairs any save where the index write
+   was rejected. */
+async function listNoteFiles(){
+  const r=await fetch(apiUrl('notes'),{headers:ghHeaders()});
+  if(r.status===404) return [];
   if(!r.ok) throw new Error('HTTP '+r.status);
+  const arr=await r.json();
+  return (Array.isArray(arr)?arr:[])
+    .filter(f=>f.type==='file' && /\.json$/.test(f.name))
+    .map(f=>f.name.replace(/\.json$/,''));
+}
+async function reconcileIndex(){
+  if(MODE!=='remote' || !token) return;
+  try{
+    const ids=await listNoteFiles();
+    const inIndex=new Set(index.map(n=>n.id));
+    const onDisk=new Set(ids);
+    const missing=ids.filter(id=>!inIndex.has(id));
+    const stale=index.filter(n=>!onDisk.has(n.id));
+    if(!missing.length && !stale.length) return;
+    setStatus('tidying the shelf...');
+    for(const id of missing){
+      const n=await loadNote(id);
+      if(n) index.push({
+        id:n.id, title:n.title||'untitled',
+        created:n.created||keyOf(new Date()),
+        updated:n.updated||n.created||keyOf(new Date()),
+        words:wordsOf(n.body)
+      });
+    }
+    if(stale.length) index=index.filter(n=>onDisk.has(n.id));
+    await putFile(INDEX_PATH, JSON.stringify({notes:index}), 'notes index (self-repair)');
+    flashStatus('shelf tidied \u2713');
+  }catch(e){
+    console.warn('[notes] shelf-tidying skipped:', e);
+    setStatus('');
+  }
 }
 
 /* ---------- Reads (public vs owner-fresh) ---------- */
@@ -531,17 +596,32 @@ async function doSave(){
     return;
   }
   setStatus('publishing...');
+  /* step 1: the note itself — this is the part that matters */
   try{
     await putFile(notePath(note.id), JSON.stringify(note), 'note: '+title);
-    const newIndex=index.filter(n=>n.id!==note.id).concat([entry]);
-    await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
-    index=newIndex; noteCache[note.id]=note;
-    clearDraft(); dirtyEdit=false;
-    flashStatus('published \u2713');
-    location.hash=note.id;
+    noteCache[note.id]=note;
   }catch(e){
+    console.error('[notes] note save failed:', e);
     setStatus('!! not published \u2014 click here to retry', doSave);
+    return;
   }
+  /* the writing is safely up; the draft can be released */
+  clearDraft(); dirtyEdit=false;
+  /* step 2: the directory listing — bookkeeping; give github a
+     moment to settle between the two commits */
+  setStatus('updating the list...');
+  const newIndex=index.filter(n=>n.id!==note.id).concat([entry]);
+  try{
+    await sleep(1500);
+    await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
+    index=newIndex;
+    flashStatus('published \u2713');
+  }catch(e){
+    console.error('[notes] index update failed (will self-repair):', e);
+    index=newIndex;   /* show it locally; reconcile fixes the repo next visit */
+    setStatus('note saved \u2713 \u2014 the list will tidy itself on your next visit');
+  }
+  location.hash=note.id;
 }
 async function doDelete(){
   const id=decodeURIComponent(location.hash.slice(1));
@@ -558,14 +638,22 @@ async function doDelete(){
   setStatus('deleting...');
   try{
     await delFile(notePath(id), 'delete note');
-    const newIndex=index.filter(n=>n.id!==id);
-    await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
-    index=newIndex; delete noteCache[id];
-    flashStatus('deleted.');
-    location.hash='';
   }catch(e){
+    console.error('[notes] delete failed:', e);
     setStatus('!! delete failed \u2014 click here to retry', doDelete);
+    return;
   }
+  const newIndex=index.filter(n=>n.id!==id);
+  try{
+    await sleep(1500);
+    await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
+    flashStatus('deleted.');
+  }catch(e){
+    console.warn('[notes] index update after delete failed (will self-repair):', e);
+    setStatus('deleted \u2014 the list will tidy itself on your next visit');
+  }
+  index=newIndex; delete noteCache[id];
+  location.hash='';
 }
 
 /* ---------- Import .md ---------- */
@@ -586,25 +674,28 @@ async function importFiles(files){
     }
     setStatus('publishing '+(i+1)+'/'+list.length+'...');
     try{
+      if(i>0) await sleep(1200);   /* space out commits so github accepts them */
       await putFile(notePath(note.id), JSON.stringify(note), 'note: '+note.title);
       noteCache[note.id]=note;
       made.push({id:note.id,title:note.title,created:now,updated:now,words:wordsOf(text)});
     }catch(e){
+      console.error('[notes] import failed at "'+f.name+'":', e);
       setStatus('!! import stopped at "'+f.name+'" \u2014 fix and retry');
       break;
     }
   }
   if(MODE==='local'){ localSaveAll(Object.values(noteCache)); renderList(); flashStatus('imported.'); return; }
   if(made.length){
+    const newIndex=index.concat(made);
     try{
-      const newIndex=index.concat(made);
+      await sleep(1500);
       await putFile(INDEX_PATH, JSON.stringify({notes:newIndex}), 'notes index');
-      index=newIndex;
       flashStatus('imported '+made.length+' \u2713');
     }catch(e){
-      setStatus('!! index update failed \u2014 click here to retry',
-        ()=>importFiles([]));
+      console.warn('[notes] index update after import failed (will self-repair):', e);
+      setStatus('imported \u2014 the list will tidy itself on your next visit');
     }
+    index=newIndex;
   }
   renderList();
 }
@@ -664,6 +755,7 @@ async function main(){
   initUI();
   setStatus('loading...');
   await loadIndex();
+  await reconcileIndex();   /* adopt orphaned note files, drop ghosts */
   setStatus('');
 
   /* offer back an interrupted draft */
