@@ -123,7 +123,7 @@
 
 <hr>
 <div class="pagefoot">
-  <span class="counter" id="count">00000</span> tiny things and counting
+  <span class="counter" id="count">00000</span> tiny things and counting &middot; engine v2
 </div>
 
 <div id="lens"><div id="lensItem"></div></div>
@@ -206,33 +206,79 @@ function ghHeaders(extra){
     'X-GitHub-Api-Version':'2022-11-28'
   }, extra||{});
 }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 async function refreshSha(){
-  const r=await fetch(contentsUrl(),{headers:ghHeaders()});
+  /* cache-busted, shape-guarded metadata read: always yields the true
+     sha of the existing file, never raw content served by a stale cache */
+  const r=await fetch(contentsUrl()+'?_='+Date.now(),{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
   if(r.status===404){ sha=null; return null; }
   if(!r.ok) throw new Error('HTTP '+r.status);
-  const j=await r.json();
-  sha=j.sha;
-  return j;
+  const j=await r.json().catch(()=>null);
+  if(j && typeof j==='object' && !Array.isArray(j) && typeof j.sha==='string'){
+    sha=j.sha; return j;
+  }
+  sha=null; return null;
+}
+async function getShaViaListing(){
+  /* fallback: the repo root listing always returns fresh per-file shas */
+  const base='https://api.github.com/repos/'+REPO.owner+'/'+REPO.repo+'/contents';
+  const r=await fetch(base+'?_='+Date.now(),{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
+  if(!r.ok) return null;
+  const arr=await r.json().catch(()=>null);
+  if(!Array.isArray(arr)) return null;
+  const hit=arr.find(f=>f.name===DATA_PATH);
+  return hit && typeof hit.sha==='string' ? hit.sha : null;
+}
+async function tryPut(body){
+  const r=await fetch(contentsUrl(),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+  let j=null; try{ j=await r.json(); }catch(e){}
+  return { ok:r.ok, status:r.status, msg:(j&&j.message)||'', json:j };
 }
 async function publish(){
   if(MODE!=='remote'||!token) return;
   if(publishing){ publishAgain=true; return; }
   publishing=true;
   setStatus('publishing...');
+  const content=b64encode(JSON.stringify(data));
+  const waits=[0, 1000, 2200, 4500];
+  let ok=false, lastErr=null;
   try{
-    try{ await refreshSha(); }catch(e){}
-    const body={message:'junk drawer update '+keyOf(new Date()),
-                content:b64encode(JSON.stringify(data))};
-    if(sha) body.sha=sha;
-    let r=await fetch(contentsUrl(),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
-    if(r.status===409){
-      await refreshSha();
-      if(sha) body.sha=sha; else delete body.sha;
-      r=await fetch(contentsUrl(),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+    for(let i=0;i<waits.length && !ok;i++){
+      if(waits[i]) await sleep(waits[i]);
+      try{
+        try{ await refreshSha(); }catch(e){}
+        if(sha===null){
+          const s=await getShaViaListing();
+          if(s) sha=s;
+        }
+        const body={message:'junk drawer update '+keyOf(new Date()), content:content};
+        if(sha) body.sha=sha;
+        let res=await tryPut(body);
+        if(!res.ok && /sha/i.test(res.msg)){
+          const s=await getShaViaListing();
+          if(s) body.sha=s; else delete body.sha;
+          res=await tryPut(body);
+        }
+        if(!res.ok){
+          lastErr=new Error('HTTP '+res.status+(res.msg?' - '+res.msg:''));
+          console.warn('[junk] publish attempt '+(i+1)+' failed:', lastErr.message);
+          if(!(res.status===409 || res.status===422 || res.status>=500)) break;
+          continue;
+        }
+        sha=(res.json && res.json.content && res.json.content.sha) ? res.json.content.sha : sha;
+        ok=true;
+      }catch(e){
+        lastErr=e;
+        console.warn('[junk] publish attempt '+(i+1)+' errored:', e);
+      }
     }
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const j=await r.json();
-    sha=j.content&&j.content.sha ? j.content.sha : sha;
+    if(!ok) throw lastErr||new Error('publish failed');
     dirty=false;
     try{ localStorage.removeItem(LS.pending); }catch(e){}
     flashStatus('published \u2713');
@@ -259,15 +305,32 @@ async function loadRemote(){
   if(token){
     try{
       const j=await refreshSha();
-      if(j===null){ data={items:[]}; return; }
-      if(j.content){ data=normalize(JSON.parse(b64decode(j.content))); }
-      else{
-        const raw=await fetch(contentsUrl(),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
-        if(!raw.ok) throw new Error('HTTP '+raw.status);
-        data=normalize(await raw.json());
+      if(j===null && sha===null){
+        /* metadata unreadable — is the file actually there? */
+        const s=await getShaViaListing();
+        if(s===null){ data={items:[]}; return; }   /* truly absent */
+        sha=s;
       }
+      if(j && j.content){
+        data=normalize(JSON.parse(b64decode(j.content)));
+        return;
+      }
+      /* file too large for inline metadata (>1MB): raw read, cache-busted */
+      const raw=await fetch(contentsUrl()+'?_='+Date.now(),{
+        headers:ghHeaders({'Accept':'application/vnd.github.raw'}),
+        cache:'no-store'
+      });
+      if(!raw.ok) throw new Error('HTTP '+raw.status);
+      const parsed=await raw.json();
+      /* guard: if a caching quirk hands back file METADATA instead of
+         the file itself, don't blank the drawer — use the public copy */
+      if(parsed && typeof parsed==='object' && typeof parsed.sha==='string' && ('content' in parsed)){
+        throw new Error('metadata served instead of content');
+      }
+      data=normalize(parsed);
     }catch(e){
-      setStatus('!! token could not load data \u2014 reading public copy');
+      console.warn('[junk] owner read failed, using public copy:', e);
+      setStatus('');
       await loadPublic();
     }
   } else await loadPublic();
