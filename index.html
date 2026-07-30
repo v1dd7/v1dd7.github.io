@@ -6,7 +6,11 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>my diary</title>
 <style>
- 
+  /* ============================================
+     EARLY WEB EDITION — public diary.
+     Everyone can read; only the owner (with a
+     GitHub token in their browser) can write.
+     ============================================ */
   * { box-sizing: border-box; }
   body {
     background: #c0c0c0;
@@ -120,9 +124,9 @@
 </head>
 <body>
 
-<h1>~ my <span style="color:#3366cc">house</span> ~</h1>
-<div class="subtitle">one square a day | started 7/28/26</div>
-<marquee id="mq" scrollamount="3">*~*~ welcome to my house ~*~*</marquee>
+<h1>~ my diary ~</h1>
+<div class="subtitle">one square a day, forever &middot; est. 2026</div>
+<marquee id="mq" scrollamount="3">*~*~ welcome to my little corner of the web ~*~*</marquee>
 <hr>
 <div class="navline">
   [ <span class="linky" id="jumpToday">today</span> |
@@ -142,10 +146,7 @@
 <hr>
 <div class="pagefoot">
   this diary holds <span class="counter" id="entryCount">00000</span> entries
-  &middot; <a href="junk.html">search the junk drawer</a>
-  &middot; <a href="notes.html">explore my notes</a>
-  &middot; <a href="world.html">visit the world</a>
-  &middot; all ideas and design choices are mine, code is mainly claude
+  &middot; best viewed in any browser
 </div>
 
 <!-- Editor window (owner only) -->
@@ -241,12 +242,14 @@ const LS = {
 
 /* ---------- Mode & repo detection ---------- */
 function detectRepo(){
+  /* This site's data lives in this GitHub repo, regardless of what
+     address it's viewed from (github.io OR the custom domain v1dd.house). */
+  const HOME = { owner: 'v1dd7', repo: 'v1dd7.github.io' };
   const h = location.hostname;
-  if(!h.endsWith('.github.io')) return null;
-  const owner = h.split('.')[0];
-  const seg = location.pathname.split('/').filter(Boolean);
-  const repo = (seg.length && seg[0] !== 'index.html') ? seg[0] : h;
-  return { owner: owner, repo: repo };
+  /* only fall back to browser-only "local" mode when opened as a
+     bare file (file://) or on localhost during testing */
+  if(h==='' || h==='localhost' || h==='127.0.0.1') return null;
+  return HOME;
 }
 const REPO = detectRepo();
 const MODE = REPO ? 'remote' : 'local';
