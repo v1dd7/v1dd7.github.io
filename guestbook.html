@@ -164,8 +164,8 @@
                      NOT the service_role/secret key)
    Leave them as the empty strings to see the setup notice.        */
 const SUPABASE = {
-  url:  "https://nopugwhdaliderdrihkm.supabase.co",
-  anon: "sb_publishable_JLHBfW7hPsCssxxK6qAxwA_3WfB2Svm"
+  url:  "",
+  anon: ""
 };
 /* >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> */
 
@@ -247,7 +247,10 @@ function drawStroke(st, W, H){
 function padPos(e){
   const rect = pad.getBoundingClientRect();
   const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
-  return [ (p.clientX-rect.left)/rect.width, (p.clientY-rect.top)/rect.height ];
+  const x = (p.clientX-rect.left)/rect.width;
+  const y = (p.clientY-rect.top)/rect.height;
+  /* 4 decimals ≈ half-pixel precision, and keeps stored drawings small */
+  return [ Math.round(x*10000)/10000, Math.round(y*10000)/10000 ];
 }
 function startDraw(e){
   if(!configured) return;
@@ -258,7 +261,12 @@ function startDraw(e){
 function moveDraw(e){
   if(!drawing) return;
   e.preventDefault();
-  curStroke.pts.push(padPos(e));
+  const p = padPos(e);
+  const last = curStroke.pts[curStroke.pts.length-1];
+  /* skip points closer than ~1.5px to the previous one — the mouse
+     fires far more events than a smooth line actually needs */
+  if(Math.hypot(p[0]-last[0], p[1]-last[1]) < 0.003) return;
+  curStroke.pts.push(p);
   redraw();
 }
 function endDraw(){
@@ -353,7 +361,13 @@ async function submit(){
   } else {
     if(!strokes.length){ msg.textContent="draw something first."; return; }
     const payload={ w:520, h:300, s: strokes };
-    row={ name: name||null, kind:"draw", body: JSON.stringify(payload), approved:false };
+    const bodyStr=JSON.stringify(payload);
+    if(bodyStr.length > 95000){
+      msg.style.color="#cc0000";
+      msg.textContent="that drawing is too detailed to send \u2014 erase a little and try again.";
+      return;
+    }
+    row={ name: name||null, kind:"draw", body: bodyStr, approved:false };
   }
   msg.style.color="#333"; msg.textContent="sending...";
   document.getElementById('submitBtn').disabled=true;
