@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>the guestbook</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #c0c0c0; color: #000;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 14px; margin: 12px;
+  }
+  h1 { text-align: center; font-size: 28px; margin: 4px 0 0; font-weight: bold; }
+  .subtitle { text-align: center; font-size: 12px; color: #333; margin: 2px 0 6px; }
+  marquee { display: block; font-size: 12px; color: #000080; margin: 2px 0; }
+  .navline { text-align: center; font-size: 13px; margin: 6px 0; }
+  .linky { color: #0000EE; text-decoration: underline; cursor: pointer; }
+  .linky:active { color: #EE0000; }
+  a { color: #0000EE; }
+  hr { border: none; border-top: 1px solid #808080; border-bottom: 1px solid #fff; }
+  button {
+    background: #c0c0c0; border: 2px outset #fff;
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+    padding: 2px 10px; cursor: pointer; color: #000;
+  }
+  button:active { border-style: inset; }
+  button.on { border-style: inset; font-weight: bold; }
+  input[type=text], textarea {
+    background: #fff; color: #000; border: 2px inset #fff;
+    font-family: "Courier New", monospace; font-size: 13px; padding: 4px 6px;
+  }
+  .hint { font-size: 11px; color: #333; margin-top: 5px; line-height: 1.4; }
+  .note-msg { text-align: center; font-size: 12px; color: #cc0000; min-height: 16px; margin: 4px 0; }
+
+  /* ---------- sign panel ---------- */
+  #signPanel { max-width: 560px; margin: 0 auto 14px; border: 1px solid #808080; padding: 10px; }
+  #signPanel legend, .lbl { font-size: 12px; color: #333; }
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  #gName { width: 200px; }
+  #gText { width: 100%; min-height: 70px; resize: vertical; }
+  .modeTabs { display: flex; gap: 6px; margin-bottom: 8px; }
+
+  /* ---------- sketch pad ---------- */
+  #padWrap { display: none; }
+  #padWrap.on { display: block; }
+  .padtools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .swatch { width: 20px; height: 20px; border: 1px solid #000; cursor: pointer; padding: 0; }
+  .swatch.sel { outline: 2px solid #000; outline-offset: 1px; }
+  #pad {
+    background: #fff; border: 2px inset #fff; touch-action: none;
+    display: block; width: 100%; max-width: 520px; height: 300px; cursor: crosshair;
+  }
+
+  /* ---------- the wall ---------- */
+  #wall { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; padding: 14px 4px; align-items: flex-start; }
+  .signature {
+    background: #fff; border: 1px solid #000; padding: 8px 10px;
+    max-width: 260px; font-size: 13px; line-height: 1.4; word-wrap: break-word;
+  }
+  .signature .who { font-weight: bold; margin-bottom: 3px; }
+  .signature .who.anon { font-weight: normal; font-style: italic; color: #555; }
+  .signature svg { display: block; max-width: 100%; height: auto; border: 1px solid #ccc; }
+  .signature .when { font-size: 10px; color: #888; margin-top: 4px; }
+
+  .pagefoot { text-align: center; font-size: 12px; color: #333; margin: 8px 0; }
+  .counter {
+    background: #000; color: #00ff00; font-family: "Courier New", monospace;
+    font-size: 12px; padding: 1px 5px; letter-spacing: 3px; border: 1px solid #555;
+  }
+  .setupWarn {
+    max-width: 560px; margin: 12px auto; border: 2px solid #cc0000; background: #fff;
+    padding: 10px; font-size: 13px; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<h1>~ the guestbook ~</h1>
+<div class="subtitle">leave a mark &middot; approved by hand before it shows</div>
+<marquee scrollamount="3">*~ sign the wall ~*</marquee>
+<hr>
+<div class="navline">
+  [ <a href="./">the diary</a> |
+  <a href="junk.html">the junk drawer</a> |
+  <a href="notes.html">notes</a> ]
+</div>
+<hr>
+
+<div id="setupWarn" class="setupWarn" style="display:none;">
+  <b>Guestbook not configured yet.</b> Open this file and paste your Supabase URL and anon key
+  into the <code>SUPABASE</code> block near the top of the script (clearly marked). Until then,
+  the wall below is empty and signing is disabled. Full setup steps were provided alongside this file.
+</div>
+
+<!-- ---------- sign the wall ---------- -->
+<fieldset id="signPanel">
+  <legend>sign the wall</legend>
+  <div class="row">
+    <span class="lbl">name (optional):</span>
+    <input type="text" id="gName" placeholder="leave blank to sign anonymously" maxlength="40">
+  </div>
+  <div class="modeTabs">
+    <button id="tabWrite" class="on">write a note</button>
+    <button id="tabDraw">draw something</button>
+  </div>
+
+  <div id="writeWrap">
+    <textarea id="gText" placeholder="say something nice (or weird)..." maxlength="1000"></textarea>
+  </div>
+
+  <div id="padWrap">
+    <div class="padtools">
+      <span class="lbl">pen:</span>
+      <span id="swatches"></span>
+      <span class="lbl">size:</span>
+      <input type="range" id="penSize" min="1" max="14" value="3">
+      <button id="eraserBtn">eraser</button>
+      <button id="clearPad">clear</button>
+    </div>
+    <canvas id="pad" width="520" height="300"></canvas>
+    <div class="hint">drawings are saved as strokes, not photos, so they stay tiny.</div>
+  </div>
+
+  <div class="row" style="margin-top:8px;">
+    <button id="submitBtn"><b>send for approval</b></button>
+  </div>
+  <div class="note-msg" id="signMsg"></div>
+  <div class="hint">your submission won't appear until the owner approves it. be kind; drawings and notes are moderated.</div>
+</fieldset>
+
+<hr>
+<div id="wall"></div>
+
+<hr>
+<div class="pagefoot">
+  <span class="counter" id="count">00000</span> approved marks on the wall
+</div>
+
+<script>
+/* ============================================================
+   THE GUESTBOOK
+   Visitors submit a text note OR a small drawing, named or
+   anonymous. Submissions land in a Supabase table as "pending"
+   and are invisible until the owner approves them in the
+   Supabase dashboard (flip approved = true on the row).
+
+   WHY SUPABASE: a static GitHub Pages site has no server to
+   receive submissions. Supabase is a free hosted database. Its
+   Row Level Security (RLS) rules (which you set up once) make
+   the public "anon" key safe to put here:
+     - anyone may INSERT a row (but only as pending)
+     - anyone may SELECT only rows where approved = true
+     - nobody may UPDATE/DELETE via this key (you moderate in
+       the dashboard)
+   So the key below is SAFE to be public. It is NOT a password.
+   ============================================================ */
+
+/* >>>>>>>>>>>>  PASTE YOUR TWO VALUES HERE  <<<<<<<<<<<<
+   From Supabase: Project Settings -> API.
+   - SUPABASE.url  = your Project URL (looks like https://abcd1234.supabase.co)
+   - SUPABASE.anon = your "anon public" key (a long token; the PUBLIC one,
+                     NOT the service_role/secret key)
+   Leave them as the empty strings to see the setup notice.        */
+const SUPABASE = {
+  url:  "",
+  anon: ""
+};
+/* >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> */
+
+const TABLE = "guestbook";
+const configured = !!(SUPABASE.url && SUPABASE.anon);
+
+/* ---------- tiny Supabase REST helpers (no SDK needed) ---------- */
+function sbHeaders(){
+  return {
+    "apikey": SUPABASE.anon,
+    "Authorization": "Bearer " + SUPABASE.anon,
+    "Content-Type": "application/json"
+  };
+}
+async function sbSelectApproved(){
+  const url = SUPABASE.url.replace(/\/+$/,'') +
+    "/rest/v1/" + TABLE +
+    "?approved=eq.true&select=id,name,kind,body,created_at&order=created_at.desc";
+  const r = await fetch(url, { headers: sbHeaders() });
+  if(!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+async function sbInsert(row){
+  const url = SUPABASE.url.replace(/\/+$/,'') + "/rest/v1/" + TABLE;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: Object.assign(sbHeaders(), { "Prefer": "return=minimal" }),
+    body: JSON.stringify(row)
+  });
+  if(!r.ok){
+    let detail=""; try{ detail=(await r.json()).message||""; }catch(e){}
+    throw new Error("HTTP " + r.status + (detail?(" - "+detail):""));
+  }
+}
+
+/* ---------- sketch pad ---------- */
+const COLORS = ["#000000","#cc3333","#3366cc","#339933","#e0a000","#9933cc","#ffffff"];
+let penColor = COLORS[0];
+let penSize = 3;
+let erasing = false;
+let strokes = [];          /* [{c,w,pts:[[x,y],...]}] normalized 0..1 */
+let curStroke = null;
+let drawing = false;
+
+const pad = document.getElementById('pad');
+const ctx = pad ? pad.getContext('2d') : null;
+
+function fitPad(){
+  if(!pad) return;
+  /* keep internal resolution crisp for the CSS size */
+  const rect = pad.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  pad.width = Math.round(rect.width * ratio);
+  pad.height = Math.round(rect.height * ratio);
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+  redraw();
+}
+function redraw(){
+  if(!ctx) return;
+  const rect = pad.getBoundingClientRect();
+  ctx.clearRect(0,0,rect.width,rect.height);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,rect.width,rect.height);
+  ctx.lineJoin = ctx.lineCap = "round";
+  for(const st of strokes) drawStroke(st, rect.width, rect.height);
+  if(curStroke) drawStroke(curStroke, rect.width, rect.height);
+}
+function drawStroke(st, W, H){
+  if(st.pts.length===0) return;
+  ctx.strokeStyle = st.c;
+  ctx.lineWidth = st.w;
+  ctx.beginPath();
+  ctx.moveTo(st.pts[0][0]*W, st.pts[0][1]*H);
+  for(let i=1;i<st.pts.length;i++) ctx.lineTo(st.pts[i][0]*W, st.pts[i][1]*H);
+  if(st.pts.length===1){ /* a dot */
+    ctx.lineTo(st.pts[0][0]*W+0.01, st.pts[0][1]*H+0.01);
+  }
+  ctx.stroke();
+}
+function padPos(e){
+  const rect = pad.getBoundingClientRect();
+  const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
+  return [ (p.clientX-rect.left)/rect.width, (p.clientY-rect.top)/rect.height ];
+}
+function startDraw(e){
+  if(!configured) return;
+  e.preventDefault();
+  drawing = true;
+  curStroke = { c: erasing ? "#ffffff" : penColor, w: penSize, pts: [padPos(e)] };
+}
+function moveDraw(e){
+  if(!drawing) return;
+  e.preventDefault();
+  curStroke.pts.push(padPos(e));
+  redraw();
+}
+function endDraw(){
+  if(!drawing) return;
+  drawing = false;
+  if(curStroke && curStroke.pts.length) strokes.push(curStroke);
+  curStroke = null;
+  redraw();
+}
+if(pad){
+  pad.addEventListener('mousedown',startDraw);
+  pad.addEventListener('mousemove',moveDraw);
+  window.addEventListener('mouseup',endDraw);
+  pad.addEventListener('touchstart',startDraw,{passive:false});
+  pad.addEventListener('touchmove',moveDraw,{passive:false});
+  pad.addEventListener('touchend',endDraw);
+}
+
+/* build swatches */
+(function(){
+  const box=document.getElementById('swatches');
+  COLORS.forEach((c,i)=>{
+    const b=document.createElement('button');
+    b.className='swatch'+(i===0?' sel':'');
+    b.style.background=c;
+    b.title=c;
+    b.onclick=()=>{
+      penColor=c; erasing=false;
+      document.getElementById('eraserBtn').classList.remove('on');
+      Array.from(box.children).forEach(el=>el.classList.remove('sel'));
+      b.classList.add('sel');
+    };
+    box.appendChild(b);
+  });
+})();
+document.getElementById('penSize').oninput=e=>{ penSize=+e.target.value; };
+document.getElementById('eraserBtn').onclick=function(){
+  erasing=!erasing; this.classList.toggle('on',erasing);
+};
+document.getElementById('clearPad').onclick=()=>{ strokes=[]; curStroke=null; redraw(); };
+
+/* ---------- render a stored drawing as SVG (safe, no canvas needed) ---------- */
+function strokesToSvg(data){
+  const W=260, H=Math.round(260 * (data.h||300)/(data.w||520));
+  const ns="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(ns,"svg");
+  svg.setAttribute("viewBox","0 0 "+W+" "+H);
+  svg.setAttribute("width",W); svg.setAttribute("height",H);
+  const bg=document.createElementNS(ns,"rect");
+  bg.setAttribute("width",W); bg.setAttribute("height",H); bg.setAttribute("fill","#fff");
+  svg.appendChild(bg);
+  (data.s||[]).forEach(st=>{
+    if(!st.pts||!st.pts.length) return;
+    const path=document.createElementNS(ns,"path");
+    let d="M "+(st.pts[0][0]*W)+" "+(st.pts[0][1]*H);
+    for(let i=1;i<st.pts.length;i++) d+=" L "+(st.pts[i][0]*W)+" "+(st.pts[i][1]*H);
+    if(st.pts.length===1) d+=" l 0.1 0.1";
+    path.setAttribute("d",d);
+    path.setAttribute("stroke",st.c);
+    path.setAttribute("stroke-width",st.w);
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke-linecap","round");
+    path.setAttribute("stroke-linejoin","round");
+    svg.appendChild(path);
+  });
+  return svg;
+}
+
+/* ---------- mode tabs ---------- */
+let mode="write";
+function setMode(m){
+  mode=m;
+  document.getElementById('tabWrite').classList.toggle('on',m==="write");
+  document.getElementById('tabDraw').classList.toggle('on',m==="draw");
+  document.getElementById('writeWrap').style.display = m==="write"?"":"none";
+  document.getElementById('padWrap').classList.toggle('on',m==="draw");
+  if(m==="draw") fitPad();
+}
+document.getElementById('tabWrite').onclick=()=>setMode("write");
+document.getElementById('tabDraw').onclick=()=>setMode("draw");
+
+/* ---------- submit ---------- */
+async function submit(){
+  if(!configured) return;
+  const name=document.getElementById('gName').value.trim().slice(0,40);
+  const msg=document.getElementById('signMsg');
+  let row;
+  if(mode==="write"){
+    const text=document.getElementById('gText').value.trim();
+    if(!text){ msg.textContent="write something first."; return; }
+    row={ name: name||null, kind:"text", body: text, approved:false };
+  } else {
+    if(!strokes.length){ msg.textContent="draw something first."; return; }
+    const payload={ w:520, h:300, s: strokes };
+    row={ name: name||null, kind:"draw", body: JSON.stringify(payload), approved:false };
+  }
+  msg.style.color="#333"; msg.textContent="sending...";
+  document.getElementById('submitBtn').disabled=true;
+  try{
+    await sbInsert(row);
+    msg.style.color="#006600";
+    msg.textContent="sent! it'll appear once the owner approves it. thank you for signing.";
+    document.getElementById('gText').value="";
+    document.getElementById('gName').value="";
+    strokes=[]; curStroke=null; redraw();
+  }catch(e){
+    msg.style.color="#cc0000";
+    msg.textContent="couldn't send ("+e.message+"). try again in a moment.";
+  }finally{
+    document.getElementById('submitBtn').disabled=false;
+  }
+}
+document.getElementById('submitBtn').onclick=submit;
+
+/* ---------- render the wall ---------- */
+function fmtWhen(iso){
+  try{ return new Date(iso).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); }
+  catch(e){ return ""; }
+}
+function renderWall(rows){
+  const wall=document.getElementById('wall');
+  wall.innerHTML='';
+  if(!rows.length){
+    const p=document.createElement('div'); p.className='signature';
+    p.textContent='(no signatures yet. be the first.)';
+    wall.appendChild(p);
+  }
+  rows.forEach(r=>{
+    const el=document.createElement('div'); el.className='signature';
+    const who=document.createElement('div');
+    who.className='who'+(r.name?'':' anon');
+    who.textContent = r.name ? r.name : 'anonymous';
+    el.appendChild(who);
+    if(r.kind==='draw'){
+      try{ el.appendChild(strokesToSvg(JSON.parse(r.body))); }
+      catch(e){ /* skip malformed */ }
+    } else {
+      const body=document.createElement('div');
+      body.textContent=r.body||'';
+      el.appendChild(body);
+    }
+    if(r.created_at){
+      const when=document.createElement('div'); when.className='when';
+      when.textContent=fmtWhen(r.created_at);
+      el.appendChild(when);
+    }
+    wall.appendChild(el);
+  });
+  document.getElementById('count').textContent=String(rows.length).padStart(5,'0');
+}
+
+/* ---------- startup ---------- */
+async function main(){
+  if(!configured){
+    document.getElementById('setupWarn').style.display='block';
+    document.getElementById('submitBtn').disabled=true;
+    renderWall([]);
+    return;
+  }
+  try{
+    const rows=await sbSelectApproved();
+    renderWall(rows);
+  }catch(e){
+    renderWall([]);
+    document.getElementById('signMsg').textContent="couldn't load the wall ("+e.message+").";
+  }
+}
+setMode("write");
+main();
+</script>
+</body>
+</html>
