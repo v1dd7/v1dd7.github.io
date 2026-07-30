@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>sight &amp; sound</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #c0c0c0; color: #000;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 14px; margin: 12px;
+  }
+  h1 { text-align: center; font-size: 28px; margin: 4px 0 0; font-weight: bold; }
+  .subtitle { text-align: center; font-size: 12px; color: #333; margin: 2px 0 6px; }
+  marquee { display: block; font-size: 12px; color: #000080; margin: 2px 0; }
+  .navline { text-align: center; font-size: 13px; margin: 6px 0; }
+  .linky { color: #0000EE; text-decoration: underline; cursor: pointer; }
+  .linky:active { color: #EE0000; }
+  a { color: #0000EE; }
+  hr { border: none; border-top: 1px solid #808080; border-bottom: 1px solid #fff; }
+  #status { color: #cc0000; font-size: 12px; margin-left: 8px; }
+  #status.clicky { text-decoration: underline; cursor: pointer; }
+  button {
+    background: #c0c0c0; border: 2px outset #fff;
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px;
+    padding: 2px 10px; cursor: pointer; color: #000;
+  }
+  button:active { border-style: inset; }
+  input[type=url], textarea {
+    width: 100%; background: #fff; color: #000; border: 2px inset #fff;
+    font-family: "Courier New", monospace; font-size: 13px; padding: 4px 6px;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  input[type=file] { display: none; }
+  fieldset { border: 1px solid #808080; margin: 0 auto 12px; padding: 10px; max-width: 620px; }
+  legend { font-size: 12px; padding: 0 4px; }
+  .hint { font-size: 11px; color: #333; margin-top: 5px; line-height: 1.4; }
+  .machineMsg { font-size: 12px; color: #cc0000; min-height: 15px; margin-top: 4px; }
+
+  #prevWrap { text-align: center; margin: 10px 0; display: none; }
+  #prevImg { max-width: 100%; max-height: 380px; border: 1px solid #000; }
+  #prevCredit { font-size: 11px; color: #333; margin-top: 4px; }
+  .rowlabel { font-size: 11px; text-transform: none; color: #333; margin: 8px 0 3px; }
+
+  /* gallery */
+  #wall { max-width: 640px; margin: 0 auto; }
+  .pairing {
+    background: #fff; border: 1px solid #000;
+    padding: 10px; margin: 0 0 18px; position: relative;
+  }
+  .pairing img { max-width: 100%; border: 1px solid #808080; display: block; margin: 0 auto; cursor: default; }
+  .pairing.hoverable img { cursor: pointer; }
+  .pairing.playing .noteicon { color: #cc0000; font-weight: bold; }
+  .noteicon { position: absolute; top: 6px; right: 8px; color: #000080; font-size: 13px; }
+  .pairing .why { font-size: 14px; line-height: 1.5; margin: 8px 0; white-space: pre-wrap; }
+  .pairing .credit { font-size: 10px; color: #666; margin-top: 6px; line-height: 1.4; }
+  .pairing .when { font-size: 10px; color: #888; margin-top: 2px; }
+  .pairing iframe, .pairing audio { width: 100%; border: 1px solid #808080; margin-top: 6px; }
+  .pairing .del {
+    position: absolute; top: -8px; left: -8px;
+    width: 16px; height: 16px; padding: 0; font-size: 10px; line-height: 12px;
+  }
+  #hoverPlayerBox { position: fixed; bottom: 0; right: 0; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+
+  .pagefoot { text-align: center; font-size: 12px; color: #333; margin: 8px 0; }
+  .counter {
+    background: #000; color: #00ff00; font-family: "Courier New", monospace;
+    font-size: 12px; padding: 1px 5px; letter-spacing: 3px; border: 1px solid #555;
+  }
+</style>
+</head>
+<body>
+
+<h1>~ sight &amp; sound ~</h1>
+<div class="subtitle">a random image from the world's attic, and the song it secretly is</div>
+<marquee scrollamount="3">*~ what does it sound like? ~*</marquee>
+<hr>
+<div class="navline">
+  [ <a href="./">the diary</a> |
+  <a href="junk.html">the junk drawer</a> |
+  <a href="notes.html">notes</a> |
+  <a href="world.html">the world</a> |
+  <a href="guestbook.html">the guestbook</a> |
+  <label style="font-size:12px; cursor:pointer;"><input type="checkbox" id="hoverToggle" checked> hover music</label> |
+  <span class="linky" id="ownerBtn">owner</span> ]
+  <span id="status"></span>
+</div>
+<hr>
+
+<!-- ---------- the machine (owner only) ---------- -->
+<fieldset id="machine" style="display:none;">
+  <legend>the machine</legend>
+  <div style="text-align:center;">
+    <button id="rollBtn"><b>pull the lever</b></button>
+  </div>
+  <div id="prevWrap">
+    <img id="prevImg" alt="">
+    <div id="prevCredit"></div>
+    <div class="rowlabel">the song it secretly is (spotify / youtube / soundcloud link):</div>
+    <input type="url" id="songInput" placeholder="https://...">
+    <div class="rowlabel">why they rhyme:</div>
+    <textarea id="whyInput" placeholder="explain the connection..."></textarea>
+    <div style="margin-top:8px; display:flex; gap:8px; justify-content:center;">
+      <button id="rollAgain">roll again</button>
+      <button id="pairBtn"><b>pair &amp; publish</b></button>
+    </div>
+  </div>
+  <div class="machineMsg" id="machineMsg"></div>
+  <div class="hint">images come from wikimedia commons at random \u2014 the whole point is you don't choose. each pairing saves a permanent copy of the image with its credit. youtube songs play when you hover the image; spotify shows a player instead.</div>
+</fieldset>
+
+<div id="wall"></div>
+
+<hr>
+<div class="pagefoot">
+  <span class="counter" id="pairCount">000</span> pairings &middot; engine v1
+</div>
+
+<div id="hoverPlayerBox"></div>
+
+<script>
+/* ============================================================
+   SIGHT & SOUND — a synesthesia machine.
+   Pull the lever: a random image arrives from Wikimedia
+   Commons (~100M files, gloriously uncurated). Assign it the
+   song it secretly is, explain why, and publish. The image is
+   saved permanently into the repo (pairs/img_<id>.<ext>) with
+   its title/artist/license captured for the credit line, and
+   the pairing is listed in pairs-index.json.
+   Everyone can browse; only the owner (shared GitHub token)
+   can roll and pair. Hovering a pairing's image plays its
+   YouTube song, same as the diary.
+   ============================================================ */
+
+const INDEX_PATH='pairs-index.json';
+const LS={
+  token:'diaryGrid.token',       /* shared with every other room */
+  hover:'diaryGrid.hoverPlay',
+  pending:'pairsRoom.pending',
+  local:'pairsRoom.v1'
+};
+
+function detectRepo(){
+  /* This site's data lives in this GitHub repo, regardless of the
+     address it's viewed from (github.io OR the custom domain). */
+  const HOME={owner:'v1dd7', repo:'v1dd7.github.io'};
+  const h=location.hostname;
+  if(h==='' || h==='localhost' || h==='127.0.0.1') return null;
+  return HOME;
+}
+const REPO=detectRepo();
+const MODE=REPO ? 'remote' : 'local';
+let token=localStorage.getItem(LS.token)||'';
+function canEdit(){ return MODE==='local' || !!token; }
+
+let index={pairs:[]};
+let cur=null;                 /* the currently rolled, unpaired image */
+let imgOverride={};           /* path -> dataUrl for just-published images */
+
+function newId(){ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6); }
+function keyOf(d){ return d.toISOString().slice(0,10); }
+function fmtKey(k){ const p=k.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); }
+
+/* ---------- status ---------- */
+let statusTimer;
+function setStatus(msg, retryFn){
+  const s=document.getElementById('status');
+  clearTimeout(statusTimer);
+  s.textContent=msg;
+  s.classList.toggle('clicky', !!retryFn);
+  s.onclick=retryFn||null;
+}
+function flashStatus(msg){
+  setStatus(msg,null);
+  statusTimer=setTimeout(()=>setStatus('',null),1800);
+}
+
+/* ---------- base64 + GitHub API (latest battle-tested versions) ---------- */
+function b64encode(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH){
+    bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH));
+  }
+  return btoa(bin);
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function apiUrl(path){
+  return 'https://api.github.com/repos/'+REPO.owner+'/'+REPO.repo+'/contents/'+path;
+}
+function ghHeaders(extra){
+  return Object.assign({
+    'Authorization':'Bearer '+token,
+    'Accept':'application/vnd.github+json',
+    'X-GitHub-Api-Version':'2022-11-28'
+  }, extra||{});
+}
+async function getMeta(path){
+  const bust=(path.indexOf('?')>=0?'&':'?')+'_='+Date.now();
+  const r=await fetch(apiUrl(path)+bust,{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
+  if(r.status===404) return null;
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const j=await r.json().catch(()=>null);
+  if(j && typeof j==='object' && !Array.isArray(j) && typeof j.sha==='string') return j;
+  return null;
+}
+async function getShaViaListing(path){
+  const slash=path.lastIndexOf('/');
+  const dir=slash>=0?path.slice(0,slash):'';
+  const name=slash>=0?path.slice(slash+1):path;
+  const r=await fetch(apiUrl(dir)+'?_='+Date.now(),{
+    headers:ghHeaders({'Accept':'application/vnd.github+json'}),
+    cache:'no-store'
+  });
+  if(!r.ok) return null;
+  const arr=await r.json().catch(()=>null);
+  if(!Array.isArray(arr)) return null;
+  const hit=arr.find(f=>f.name===name);
+  return hit && typeof hit.sha==='string' ? hit.sha : null;
+}
+async function putB64(path, contentB64, msg){
+  const body={message:msg, content:contentB64};
+  const waits=[0, 1000, 2200, 4500];
+  let lastErr=null;
+  for(let i=0;i<waits.length;i++){
+    if(waits[i]) await sleep(waits[i]);
+    try{
+      const meta=await getMeta(path).catch(()=>null);
+      if(meta && meta.sha) body.sha=meta.sha; else delete body.sha;
+      let r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+      if(r.ok) return;
+      let detail=''; try{ detail=(await r.json()).message||''; }catch(e){}
+      if(/sha/i.test(detail)){
+        const sha=await getShaViaListing(path).catch(()=>null);
+        if(sha){
+          body.sha=sha;
+          r=await fetch(apiUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+          if(r.ok) return;
+          try{ detail=(await r.json()).message||detail; }catch(e){}
+        }
+      }
+      lastErr=new Error('HTTP '+r.status+(detail?' - '+detail:''));
+      console.warn('[pairs] save attempt '+(i+1)+' for '+path+' failed:', lastErr.message);
+      if(!(r.status===409 || r.status===422 || r.status>=500)) break;
+    }catch(e){
+      lastErr=e;
+      console.warn('[pairs] save attempt '+(i+1)+' for '+path+' errored:', e);
+    }
+  }
+  throw lastErr || new Error('save failed');
+}
+function putText(path, str, msg){ return putB64(path, b64encode(str), msg); }
+async function delFile(path, msg){
+  const waits=[0, 1000, 2500];
+  let lastErr=null;
+  for(let i=0;i<waits.length;i++){
+    if(waits[i]) await sleep(waits[i]);
+    try{
+      const meta=await getMeta(path);
+      if(!meta) return;
+      const r=await fetch(apiUrl(path),{
+        method:'DELETE', headers:ghHeaders(),
+        body:JSON.stringify({message:msg, sha:meta.sha})
+      });
+      if(r.ok) return;
+      lastErr=new Error('HTTP '+r.status);
+      if(!(r.status===409 || r.status===422 || r.status>=500)) break;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr || new Error('delete failed');
+}
+async function readJson(path){
+  if(MODE==='remote' && token){
+    const r=await fetch(apiUrl(path),{headers:ghHeaders({'Accept':'application/vnd.github.raw'})});
+    if(r.status===404) return null;
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+  const r=await fetch(path+'?t='+Date.now());
+  if(!r.ok) return null;
+  return r.json();
+}
+
+/* ---------- local mode ---------- */
+function saveLocal(){
+  try{ localStorage.setItem(LS.local, JSON.stringify(index)); }
+  catch(e){ setStatus('!! save failed (storage full?)'); }
+}
+
+/* ---------- the roller ---------- */
+function stripHtml(s){
+  try{ return (new DOMParser().parseFromString(s||'','text/html').body.textContent||'').trim(); }
+  catch(e){ return (s||'').replace(/<[^>]*>/g,'').trim(); }
+}
+function blobToDataURL(blob){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result); r.onerror=rej;
+    r.readAsDataURL(blob);
+  });
+}
+async function roll(){
+  const btn=document.getElementById('rollBtn');
+  btn.disabled=true;
+  document.getElementById('machineMsg').textContent='';
+  setStatus('reaching into the archives...');
+  try{
+    let found=null;
+    for(let attempt=0; attempt<4 && !found; attempt++){
+      const api='https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*'+
+        '&generator=random&grnnamespace=6&grnlimit=10'+
+        '&prop=imageinfo&iiprop=url|mime|extmetadata&iiurlwidth=1024';
+      const r=await fetch(api);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      const pages=(j.query && j.query.pages) ? Object.values(j.query.pages) : [];
+      for(const p of pages){
+        const ii=p.imageinfo && p.imageinfo[0];
+        if(!ii || !ii.thumburl) continue;
+        if(!/^image\//.test(ii.mime||'')) continue;
+        found={ page:p, ii:ii };
+        break;
+      }
+    }
+    if(!found) throw new Error('the archives came up empty \u2014 pull again');
+
+    const ii=found.ii;
+    const meta=ii.extmetadata||{};
+    const imgResp=await fetch(ii.thumburl);
+    if(!imgResp.ok) throw new Error('image fetch failed');
+    let blob=await imgResp.blob();
+
+    /* keep saved copies reasonable: re-encode oversized stills as jpeg */
+    if(blob.size>1500000 && blob.type!=='image/gif'){
+      const tmpUrl=URL.createObjectURL(blob);
+      blob=await new Promise(res=>{
+        const im=new Image();
+        im.onload=()=>{
+          const max=1024;
+          let w=im.width,h=im.height;
+          if(w>max||h>max){ const s=max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+          const c=document.createElement('canvas'); c.width=w; c.height=h;
+          c.getContext('2d').drawImage(im,0,0,w,h);
+          c.toBlob(b=>res(b||blob),'image/jpeg',0.85);
+        };
+        im.onerror=()=>res(blob);
+        im.src=tmpUrl;
+      });
+      URL.revokeObjectURL(tmpUrl);
+    }
+
+    const dataUrl=await blobToDataURL(blob);
+    const ext = blob.type==='image/png' ? 'png' : blob.type==='image/gif' ? 'gif' : 'jpg';
+    cur={
+      id:newId(),
+      ext:ext,
+      dataUrl:dataUrl,
+      title:(found.page.title||'').replace(/^File:/,''),
+      source:ii.descriptionurl||'',
+      artist:stripHtml(meta.Artist && meta.Artist.value).slice(0,120),
+      license:stripHtml(meta.LicenseShortName && meta.LicenseShortName.value).slice(0,60)
+    };
+    document.getElementById('prevImg').src=dataUrl;
+    document.getElementById('prevCredit').textContent=creditLine(cur);
+    document.getElementById('prevWrap').style.display='block';
+    document.getElementById('songInput').value='';
+    document.getElementById('whyInput').value='';
+    setStatus('');
+  }catch(e){
+    console.warn('[pairs] roll failed:', e);
+    setStatus('');
+    document.getElementById('machineMsg').textContent='the machine jammed ('+e.message+') \u2014 pull again.';
+  }finally{
+    btn.disabled=false;
+  }
+}
+function creditLine(rec){
+  const bits=[rec.title];
+  if(rec.artist) bits.push('by '+rec.artist);
+  if(rec.license) bits.push(rec.license);
+  return bits.join(' \u00b7 ');
+}
+
+/* ---------- pairing / publishing ---------- */
+function loadPending(){
+  try{ return JSON.parse(localStorage.getItem(LS.pending)); }catch(e){ return null; }
+}
+function savePending(p){
+  try{ localStorage.setItem(LS.pending, JSON.stringify(p)); }catch(e){}
+}
+function clearPending(){
+  try{ localStorage.removeItem(LS.pending); }catch(e){}
+}
+async function pair(){
+  if(!cur){ return; }
+  const song=document.getElementById('songInput').value.trim();
+  const why=document.getElementById('whyInput').value.trim();
+  const msg=document.getElementById('machineMsg');
+  if(!song){ msg.textContent='it needs its song.'; return; }
+  if(!why && !confirm('no explanation \u2014 pair anyway?')) return;
+
+  const rec={
+    id:cur.id,
+    img:'pairs/img_'+cur.id+'.'+cur.ext,
+    title:cur.title, source:cur.source, artist:cur.artist, license:cur.license,
+    song:song, why:why, created:keyOf(new Date())
+  };
+  const pending={ rec:rec, imgB64:cur.dataUrl.split(',')[1] };
+  savePending(pending);
+  await publishPending(pending);
+}
+async function publishPending(pending){
+  const rec=pending.rec;
+  if(MODE==='local'){
+    rec.img=null; rec.dataUrl='data:image/x;base64,'+pending.imgB64;
+    index.pairs.unshift(rec);
+    saveLocal(); clearPending();
+    resetMachine(); render();
+    flashStatus('saved.');
+    return;
+  }
+  if(!token) return;
+  document.getElementById('pairBtn').disabled=true;
+  setStatus('publishing the image...');
+  try{
+    await putB64(rec.img, pending.imgB64, 'pairing image: '+rec.title.slice(0,50));
+  }catch(e){
+    console.error('[pairs] image publish failed:', e);
+    setStatus('!! not published \u2014 click here to retry', ()=>publishPending(pending));
+    document.getElementById('pairBtn').disabled=false;
+    return;
+  }
+  setStatus('updating the gallery...');
+  try{
+    await sleep(1500);
+    const newIndex={pairs:[rec].concat(index.pairs.filter(p=>p.id!==rec.id))};
+    await putText(INDEX_PATH, JSON.stringify(newIndex), 'pairing: '+rec.title.slice(0,50));
+    index=newIndex;
+    imgOverride[rec.img]='data:image/x;base64,'+pending.imgB64;
+    clearPending();
+    resetMachine(); render();
+    flashStatus('paired \u2713');
+  }catch(e){
+    console.error('[pairs] index publish failed:', e);
+    setStatus('!! gallery update failed \u2014 click here to retry', ()=>publishPending(pending));
+  }finally{
+    document.getElementById('pairBtn').disabled=false;
+  }
+}
+function resetMachine(){
+  cur=null;
+  document.getElementById('prevWrap').style.display='none';
+  document.getElementById('machineMsg').textContent='';
+}
+async function removePairing(rec){
+  if(!confirm('unpair "'+(rec.title||'this one')+'" for good?')) return;
+  if(MODE==='local'){
+    index.pairs=index.pairs.filter(p=>p.id!==rec.id);
+    saveLocal(); render(); return;
+  }
+  setStatus('removing...');
+  try{
+    if(rec.img) await delFile(rec.img, 'remove pairing image');
+    await sleep(1500);
+    const newIndex={pairs:index.pairs.filter(p=>p.id!==rec.id)};
+    await putText(INDEX_PATH, JSON.stringify(newIndex), 'remove pairing');
+    index=newIndex;
+    render();
+    flashStatus('removed.');
+  }catch(e){
+    console.error('[pairs] remove failed:', e);
+    setStatus('!! remove failed \u2014 click here to retry', ()=>removePairing(rec));
+  }
+}
+
+/* ---------- hover music (diary-style, YouTube only here) ---------- */
+let hoverTimer=null, playingCard=null;
+function ytIdFrom(url){
+  try{
+    const u=new URL(url);
+    const h=u.hostname.replace('www.','');
+    if(h.includes('youtu.be')) return u.pathname.slice(1).split('/')[0];
+    if(h.includes('youtube.com')){
+      if(u.pathname.startsWith('/shorts/')) return u.pathname.split('/')[2];
+      return u.searchParams.get('v');
+    }
+  }catch(e){}
+  return null;
+}
+function startHoverPlay(card, ytid){
+  stopHoverPlay();
+  playingCard=card;
+  card.classList.add('playing');
+  document.getElementById('hoverPlayerBox').innerHTML=
+    '<iframe src="https://www.youtube-nocookie.com/embed/'+ytid+
+    '?autoplay=1&controls=0" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" frameborder="0"></iframe>';
+}
+function stopHoverPlay(){
+  clearTimeout(hoverTimer); hoverTimer=null;
+  document.getElementById('hoverPlayerBox').innerHTML='';
+  if(playingCard){ playingCard.classList.remove('playing'); playingCard=null; }
+}
+(function(){
+  const t=document.getElementById('hoverToggle');
+  t.checked = localStorage.getItem(LS.hover) !== '0';
+  t.onchange=()=>{
+    localStorage.setItem(LS.hover, t.checked?'1':'0');
+    if(!t.checked) stopHoverPlay();
+  };
+})();
+
+/* ---------- song embeds ---------- */
+function embedFor(url){
+  try{
+    const u=new URL(url);
+    const h=u.hostname.replace('www.','');
+    if(h.includes('spotify.com')){
+      const path=u.pathname.replace('/intl-','/').replace(/^\/[a-z]{2}\//,'/');
+      return '<iframe src="https://open.spotify.com/embed'+path+'" height="152" frameborder="0" allow="encrypted-media"></iframe>';
+    }
+    const id=ytIdFrom(url);
+    if(id) return '<iframe height="180" src="https://www.youtube-nocookie.com/embed/'+id+'" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>';
+    if(h.includes('soundcloud.com')){
+      return '<iframe height="120" src="https://w.soundcloud.com/player/?url='+encodeURIComponent(url)+'"></iframe>';
+    }
+  }catch(e){}
+  const a=document.createElement('a');
+  a.href=url; a.target='_blank'; a.rel='noopener'; a.textContent=url;
+  return a.outerHTML;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const wall=document.getElementById('wall');
+  wall.innerHTML='';
+  if(!index.pairs.length){
+    const p=document.createElement('div');
+    p.style.textAlign='center'; p.style.fontSize='13px'; p.style.color='#555';
+    p.textContent = canEdit() ? '(no pairings yet. pull the lever.)' : '(no pairings yet.)';
+    wall.appendChild(p);
+  }
+  index.pairs.forEach(rec=>{
+    const card=document.createElement('div');
+    card.className='pairing';
+
+    const ytid=ytIdFrom(rec.song);
+    if(ytid){
+      card.classList.add('hoverable');
+      const note=document.createElement('span');
+      note.className='noteicon'; note.textContent='\u266A';
+      card.appendChild(note);
+    }
+
+    const img=document.createElement('img');
+    img.src = rec.dataUrl ? rec.dataUrl : (imgOverride[rec.img] || rec.img);
+    img.alt = rec.title||'';
+    card.appendChild(img);
+
+    if(ytid){
+      img.addEventListener('mouseenter',()=>{
+        if(!document.getElementById('hoverToggle').checked) return;
+        clearTimeout(hoverTimer);
+        hoverTimer=setTimeout(()=>startHoverPlay(card, ytid), 300);
+      });
+      img.addEventListener('mouseleave', stopHoverPlay);
+    }
+
+    if(rec.why){
+      const why=document.createElement('div');
+      why.className='why'; why.textContent=rec.why;
+      card.appendChild(why);
+    }
+    const emb=document.createElement('div');
+    emb.innerHTML=embedFor(rec.song);
+    card.appendChild(emb);
+
+    const credit=document.createElement('div');
+    credit.className='credit';
+    credit.textContent=creditLine(rec)+' \u00b7 ';
+    if(rec.source){
+      const a=document.createElement('a');
+      a.href=rec.source; a.target='_blank'; a.rel='noopener';
+      a.textContent='via wikimedia commons';
+      credit.appendChild(a);
+    }
+    card.appendChild(credit);
+
+    if(rec.created){
+      const when=document.createElement('div');
+      when.className='when'; when.textContent='paired '+fmtKey(rec.created);
+      card.appendChild(when);
+    }
+
+    if(canEdit()){
+      const del=document.createElement('button');
+      del.className='del'; del.textContent='\u2715'; del.title='unpair';
+      del.onclick=()=>removePairing(rec);
+      card.appendChild(del);
+    }
+    wall.appendChild(card);
+  });
+  document.getElementById('pairCount').textContent=String(index.pairs.length).padStart(3,'0');
+}
+
+/* ---------- owner ---------- */
+function ownerClick(){
+  if(token){
+    localStorage.removeItem(LS.token);
+    location.reload();
+  } else {
+    const t=prompt('paste your GitHub token (same one as the diary).\nit stays only in this browser.');
+    if(t && t.trim()){
+      localStorage.setItem(LS.token, t.trim());
+      location.reload();
+    }
+  }
+}
+document.getElementById('ownerBtn').onclick=ownerClick;
+document.getElementById('rollBtn').onclick=roll;
+document.getElementById('rollAgain').onclick=roll;
+document.getElementById('pairBtn').onclick=pair;
+
+function initUI(){
+  document.getElementById('ownerBtn').textContent = token ? 'log out' : 'owner';
+  document.getElementById('ownerBtn').style.display = (MODE==='remote') ? '' : 'none';
+  document.getElementById('machine').style.display = canEdit() ? '' : 'none';
+}
+
+/* ---------- startup ---------- */
+async function main(){
+  initUI();
+  setStatus('loading...');
+  if(MODE==='local'){
+    try{
+      const d=JSON.parse(localStorage.getItem(LS.local));
+      if(d && Array.isArray(d.pairs)) index=d;
+    }catch(e){}
+  } else {
+    try{
+      const d=await readJson(INDEX_PATH);
+      if(d && Array.isArray(d.pairs)) index=d;
+    }catch(e){ console.warn('[pairs] index load failed:', e); }
+  }
+  setStatus('');
+  render();
+
+  if(MODE==='remote' && token){
+    const pending=loadPending();
+    if(pending && pending.rec &&
+       confirm('found an unpublished pairing ("'+(pending.rec.title||'untitled')+'") from a previous visit \u2014 publish it now?')){
+      await publishPending(pending);
+    } else if(pending){
+      clearPending();
+    }
+  }
+}
+main();
+</script>
+</body>
+</html>
