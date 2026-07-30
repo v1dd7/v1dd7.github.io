@@ -170,14 +170,12 @@ const LS={
 };
 
 function detectRepo(){
+  /* This site's data lives in this GitHub repo, regardless of the
+     address it's viewed from (github.io OR the custom domain). */
+  const HOME={owner:'v1dd7', repo:'v1dd7.github.io'};
   const h=location.hostname;
-  if(!h.endsWith('.github.io')) return null;
-  const owner=h.split('.')[0];
-  const seg=location.pathname.split('/').filter(Boolean);
-  const last=seg[seg.length-1]||'';
-  const dirs=last.includes('.') ? seg.slice(0,-1) : seg;
-  const repo=dirs.length ? dirs[0] : h;
-  return {owner:owner, repo:repo};
+  if(h==='' || h==='localhost' || h==='127.0.0.1') return null;
+  return HOME;
 }
 const REPO=detectRepo();
 const MODE=REPO ? 'remote' : 'local';
